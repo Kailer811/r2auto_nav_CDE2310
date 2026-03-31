@@ -27,6 +27,8 @@ setup(
             'r2occupancy2 = auto_nav.r2occupancy2:main',
             'r2auto_nav = auto_nav.r2auto_nav:main',
 	    'auto_nav2 = auto_nav.auto_nav2:main',
+	    'auto_nav_draft = auto_nav.auto_nav_draft:main',
+	    'aruco_node = auto_nav.aruco_node:main',
         ],
     },
 )
