@@ -7,8 +7,10 @@ from collections import deque
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped
+from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
+from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
@@ -16,33 +18,29 @@ import tf2_ros
 from tf2_ros import TransformException
 
 
-LINEAR_SPEED = 0.10
-ANGULAR_SPEED = 0.75
-MAX_ANGULAR_CORRECTION = 0.9
-
-STOP_DISTANCE = 0.34
-CAUTION_DISTANCE = 0.46
-SIDE_CLEARANCE = 0.24
-GOAL_REACHED_DISTANCE = 0.18
-WAYPOINT_REACHED_DISTANCE = 0.14
-
-WALL_THRESHOLD = 60
 UNKNOWN_VALUE = -1
+WALL_THRESHOLD = 60
 POOL_SIZE = 2
-WALL_INFLATION_RADIUS = 1
-MIN_FRONTIER_SIZE = 3
-MIN_FREE_CELLS_TO_PLAN = 12
-
-FRONT_HALF_ANGLE_DEG = 22.0
-SIDE_CENTER_TOLERANCE_DEG = 28.0
-
-STUCK_TIMEOUT = 3.0
+WALL_INFLATION_RADIUS = 2
+MIN_FRONTIER_SIZE = 5
+MIN_FREE_CELLS_TO_PLAN = 20
+MAX_FRONTIER_GOALS_PER_CLUSTER = 4
+MAX_FRONTIER_CLUSTERS = 8
+BLOCKED_GOAL_COOLDOWN = 25.0
+BLOCKED_GOAL_RADIUS = 2
+PROGRESS_TIMEOUT = 15.0
 MIN_PROGRESS_DISTANCE = 0.08
-REPLAN_COOLDOWN = 1.0
-
+PLANNER_PERIOD = 1.0
 STARTUP_TIMEOUT = 20.0
-INITIAL_PLAN_TIMEOUT = 30.0
-CONTROL_DT = 0.1
+GOAL_SEARCH_RADIUS = 3
+FRONT_HALF_ANGLE_DEG = 18.0
+FRONT_STOP_DISTANCE = 0.24
+
+CARDINAL_NEIGHBORS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+EIGHT_CONNECTED_NEIGHBORS = [
+    (-1, 0), (1, 0), (0, -1), (0, 1),
+    (-1, -1), (-1, 1), (1, -1), (1, 1),
+]
 
 
 def euler_from_quaternion(x, y, z, w):
@@ -61,22 +59,12 @@ def euler_from_quaternion(x, y, z, w):
     return roll_x, pitch_y, yaw_z
 
 
-def wrap_angle(angle):
-    return math.atan2(math.sin(angle), math.cos(angle))
+def heuristic(cell_a, cell_b):
+    return math.hypot(cell_b[0] - cell_a[0], cell_b[1] - cell_a[1])
 
 
 def astar(grid, start, goal):
     rows, cols = grid.shape
-
-    def heuristic(cell_a, cell_b):
-        return abs(cell_a[0] - cell_b[0]) + abs(cell_a[1] - cell_b[1])
-
-    def neighbors(row, col):
-        for d_row, d_col in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            next_row = row + d_row
-            next_col = col + d_col
-            if 0 <= next_row < rows and 0 <= next_col < cols:
-                yield next_row, next_col
 
     if not (0 <= start[0] < rows and 0 <= start[1] < cols):
         return []
@@ -85,14 +73,13 @@ def astar(grid, start, goal):
     if grid[start] != 0 or grid[goal] != 0:
         return []
 
-    open_heap = [(heuristic(start, goal), 0, start)]
+    open_heap = [(heuristic(start, goal), 0.0, start)]
     came_from = {}
-    g_score = {start: 0}
+    g_score = {start: 0.0}
     visited = set()
 
     while open_heap:
         _, g_cost, current = heapq.heappop(open_heap)
-
         if current in visited:
             continue
         visited.add(current)
@@ -106,11 +93,18 @@ def astar(grid, start, goal):
             return path
 
         row, col = current
-        for next_cell in neighbors(row, col):
+        for d_row, d_col in EIGHT_CONNECTED_NEIGHBORS:
+            next_row = row + d_row
+            next_col = col + d_col
+            next_cell = (next_row, next_col)
+
+            if not (0 <= next_row < rows and 0 <= next_col < cols):
+                continue
             if grid[next_cell] != 0:
                 continue
 
-            next_g = g_cost + 1
+            step_cost = math.sqrt(2.0) if d_row != 0 and d_col != 0 else 1.0
+            next_g = g_cost + step_cost
             if next_g >= g_score.get(next_cell, float('inf')):
                 continue
 
@@ -126,43 +120,44 @@ class AutoNav(Node):
     def __init__(self):
         super().__init__('auto_nav')
 
-        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-
         map_qos = QoSProfile(
             depth=1,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            reliability=ReliabilityPolicy.RELIABLE
+            reliability=ReliabilityPolicy.RELIABLE,
         )
         self.map_sub = self.create_subscription(
             OccupancyGrid,
             'map',
             self.map_callback,
-            map_qos
+            map_qos,
         )
         self.scan_sub = self.create_subscription(
             LaserScan,
             'scan',
             self.scan_callback,
-            qos_profile_sensor_data
+            qos_profile_sensor_data,
         )
 
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.map_data = np.empty((0, 0), dtype=np.int16)
         self.map_resolution = None
         self.map_origin = None
-
         self.scan_ranges = np.array([], dtype=float)
         self.scan_angles = np.array([], dtype=float)
-        self.scan_frame = None
 
-        self.path_world = []
         self.current_goal_cell = None
-        self.blocked_goals = set()
-        self.last_replan_time = 0.0
-        self.last_plan_log_time = 0.0
+        self.goal_handle = None
+        self.goal_in_flight = False
+        self.blocked_goals = {}
+        self.last_progress_time = time.time()
+        self.last_progress_pose = None
+        self.last_status_log_time = 0.0
+        self.system_ready = False
 
+        self.create_timer(PLANNER_PERIOD, self.exploration_step)
         self.get_logger().info('AutoNav started.')
 
     def map_callback(self, msg):
@@ -180,24 +175,21 @@ class AutoNav(Node):
             ranges[ranges > msg.range_max] = np.nan
 
         angles = msg.angle_min + np.arange(len(ranges), dtype=float) * msg.angle_increment
-        angles = np.mod(angles, 2.0 * math.pi)
-
         self.scan_ranges = ranges
-        self.scan_angles = angles
-        self.scan_frame = msg.header.frame_id
+        self.scan_angles = np.mod(angles, 2.0 * math.pi)
 
     def wait_for_system_ready(self, timeout_sec=STARTUP_TIMEOUT):
-        self.get_logger().info('Waiting for /map, /scan, and TF map->base_link ...')
+        self.get_logger().info('Waiting for /map, /scan, TF map->base_link, and Nav2...')
         start_time = time.time()
 
         while rclpy.ok() and time.time() - start_time < timeout_sec:
             rclpy.spin_once(self, timeout_sec=0.1)
-
             map_ready = self.map_data.size != 0 and self.map_resolution is not None and self.map_origin is not None
             scan_ready = self.scan_ranges.size != 0 and self.scan_angles.size != 0
             tf_ready = self.tf_buffer.can_transform('map', 'base_link', rclpy.time.Time())
-
-            if map_ready and scan_ready and tf_ready:
+            nav_ready = self.nav_client.wait_for_server(timeout_sec=0.0)
+            if map_ready and scan_ready and tf_ready and nav_ready:
+                self.system_ready = True
                 self.get_logger().info('System ready.')
                 return True
 
@@ -210,35 +202,53 @@ class AutoNav(Node):
             transform.transform.rotation.x,
             transform.transform.rotation.y,
             transform.transform.rotation.z,
-            transform.transform.rotation.w
+            transform.transform.rotation.w,
         )
         return transform.transform.translation.x, transform.transform.translation.y, yaw
 
-    def stop(self):
-        self.cmd_pub.publish(Twist())
+    def sector_distance(self, center_deg, half_width_deg):
+        if self.scan_ranges.size == 0 or self.scan_angles.size == 0:
+            return None
 
-    def pool_map(self, occ_grid, pool_size=POOL_SIZE):
+        center_rad = math.radians(center_deg) % (2.0 * math.pi)
+        half_width_rad = math.radians(half_width_deg)
+        angle_error = np.angle(np.exp(1j * (self.scan_angles - center_rad)))
+        mask = np.abs(angle_error) <= half_width_rad
+        if not np.any(mask):
+            return None
+
+        sector_ranges = self.scan_ranges[mask]
+        sector_ranges = sector_ranges[~np.isnan(sector_ranges)]
+        if sector_ranges.size == 0:
+            return None
+
+        return float(np.percentile(sector_ranges, 20))
+
+    def front_clearance(self):
+        return self.sector_distance(0.0, FRONT_HALF_ANGLE_DEG)
+
+    def pool_map(self, occ_grid):
         height, width = occ_grid.shape
-        pad_h = (pool_size - height % pool_size) % pool_size
-        pad_w = (pool_size - width % pool_size) % pool_size
+        pad_h = (POOL_SIZE - height % POOL_SIZE) % POOL_SIZE
+        pad_w = (POOL_SIZE - width % POOL_SIZE) % POOL_SIZE
 
         if pad_h > 0 or pad_w > 0:
             occ_grid = np.pad(
                 occ_grid,
                 ((0, pad_h), (0, pad_w)),
                 mode='constant',
-                constant_values=UNKNOWN_VALUE
+                constant_values=UNKNOWN_VALUE,
             )
 
-        pooled_h = occ_grid.shape[0] // pool_size
-        pooled_w = occ_grid.shape[1] // pool_size
+        pooled_h = occ_grid.shape[0] // POOL_SIZE
+        pooled_w = occ_grid.shape[1] // POOL_SIZE
         pooled = np.full((pooled_h, pooled_w), UNKNOWN_VALUE, dtype=np.int16)
 
         for row in range(pooled_h):
             for col in range(pooled_w):
                 block = occ_grid[
-                    row * pool_size:(row + 1) * pool_size,
-                    col * pool_size:(col + 1) * pool_size
+                    row * POOL_SIZE:(row + 1) * POOL_SIZE,
+                    col * POOL_SIZE:(col + 1) * POOL_SIZE,
                 ]
                 pooled[row, col] = int(np.max(block))
 
@@ -250,13 +260,13 @@ class AutoNav(Node):
         grid[pooled_occ >= WALL_THRESHOLD] = 1
         return grid
 
-    def inflate_walls(self, grid, radius=WALL_INFLATION_RADIUS):
+    def inflate_walls(self, grid):
         inflated = grid.copy()
         rows, cols = grid.shape
 
         for row, col in np.argwhere(grid == 1):
-            for d_row in range(-radius, radius + 1):
-                for d_col in range(-radius, radius + 1):
+            for d_row in range(-WALL_INFLATION_RADIUS, WALL_INFLATION_RADIUS + 1):
+                for d_col in range(-WALL_INFLATION_RADIUS, WALL_INFLATION_RADIUS + 1):
                     next_row = row + d_row
                     next_col = col + d_col
                     if 0 <= next_row < rows and 0 <= next_col < cols and inflated[next_row, next_col] == 0:
@@ -267,10 +277,8 @@ class AutoNav(Node):
     def world_to_pooled_cell(self, world_x, world_y, pooled_shape):
         map_x = (world_x - self.map_origin.x) / self.map_resolution
         map_y = (world_y - self.map_origin.y) / self.map_resolution
-
-        pooled_col = int(round(map_x / POOL_SIZE))
-        pooled_row = int(round(map_y / POOL_SIZE))
-
+        pooled_col = int(math.floor(map_x / POOL_SIZE))
+        pooled_row = int(math.floor(map_y / POOL_SIZE))
         pooled_col = min(max(pooled_col, 0), pooled_shape[1] - 1)
         pooled_row = min(max(pooled_row, 0), pooled_shape[0] - 1)
         return pooled_row, pooled_col
@@ -281,22 +289,21 @@ class AutoNav(Node):
         return map_x, map_y
 
     def nearest_free_to_robot(self, grid, robot_cell):
-        start_row, start_col = robot_cell
-        rows, cols = grid.shape
-
-        if grid[start_row, start_col] == 0:
+        if grid[robot_cell] == 0:
             return robot_cell
 
         queue = deque([robot_cell])
         visited = {robot_cell}
+        rows, cols = grid.shape
 
         while queue:
             row, col = queue.popleft()
-            for next_cell in [(row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)]:
+            for d_row, d_col in CARDINAL_NEIGHBORS:
+                next_cell = (row + d_row, col + d_col)
                 next_row, next_col = next_cell
                 if not (0 <= next_row < rows and 0 <= next_col < cols):
                     continue
-                if next_cell in visited:
+                if next_cell in visited or grid[next_cell] == 1:
                     continue
                 if grid[next_cell] == 0:
                     return next_cell
@@ -313,7 +320,9 @@ class AutoNav(Node):
             for col in range(cols):
                 if grid[row, col] != 0:
                     continue
-                for next_row, next_col in [(row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)]:
+                for d_row, d_col in CARDINAL_NEIGHBORS:
+                    next_row = row + d_row
+                    next_col = col + d_col
                     if 0 <= next_row < rows and 0 <= next_col < cols and grid[next_row, next_col] == 2:
                         frontier_mask[row, col] = True
                         break
@@ -333,13 +342,9 @@ class AutoNav(Node):
                 while queue:
                     cur_row, cur_col = queue.popleft()
                     cluster.append((cur_row, cur_col))
-
-                    for next_row, next_col in [
-                        (cur_row - 1, cur_col),
-                        (cur_row + 1, cur_col),
-                        (cur_row, cur_col - 1),
-                        (cur_row, cur_col + 1),
-                    ]:
+                    for d_row, d_col in EIGHT_CONNECTED_NEIGHBORS:
+                        next_row = cur_row + d_row
+                        next_col = cur_col + d_col
                         if 0 <= next_row < rows and 0 <= next_col < cols:
                             if frontier_mask[next_row, next_col] and not visited[next_row, next_col]:
                                 visited[next_row, next_col] = True
@@ -348,316 +353,310 @@ class AutoNav(Node):
                 if len(cluster) >= MIN_FRONTIER_SIZE:
                     clusters.append(cluster)
 
-        return clusters
+        clusters.sort(key=len, reverse=True)
+        return clusters[:MAX_FRONTIER_CLUSTERS]
 
-    def rank_frontier_goals(self, clusters, robot_cell, inflated_grid):
+    def prune_blocked_goals(self):
+        now = time.time()
+        self.blocked_goals = {
+            cell: blocked_at
+            for cell, blocked_at in self.blocked_goals.items()
+            if now - blocked_at < BLOCKED_GOAL_COOLDOWN
+        }
+
+    def mark_goal_region_blocked(self, goal_cell, radius=BLOCKED_GOAL_RADIUS):
+        row, col = goal_cell
+        blocked_at = time.time()
+        for d_row in range(-radius, radius + 1):
+            for d_col in range(-radius, radius + 1):
+                self.blocked_goals[(row + d_row, col + d_col)] = blocked_at
+
+    def cluster_centroid(self, cluster):
+        centroid_row = sum(cell[0] for cell in cluster) / len(cluster)
+        centroid_col = sum(cell[1] for cell in cluster) / len(cluster)
+        return min(
+            cluster,
+            key=lambda cell: abs(cell[0] - centroid_row) + abs(cell[1] - centroid_col),
+        )
+
+    def path_length_cells(self, path):
+        if len(path) < 2:
+            return 0.0
+
+        total = 0.0
+        for current, next_cell in zip(path, path[1:]):
+            total += heuristic(current, next_cell)
+        return total
+
+    def clearance_score(self, raw_grid, row, col):
+        rows, cols = raw_grid.shape
+        score = 0
+
+        for d_row in range(-1, 2):
+            for d_col in range(-1, 2):
+                next_row = row + d_row
+                next_col = col + d_col
+                if not (0 <= next_row < rows and 0 <= next_col < cols):
+                    continue
+                value = raw_grid[next_row, next_col]
+                if value == 1:
+                    score -= 3
+                elif value == 2:
+                    score -= 1
+                else:
+                    score += 1
+
+        return score
+
+    def select_standoff_goal(self, frontier_cell, robot_cell, raw_grid, inflated_grid):
+        frontier_row, frontier_col = frontier_cell
         robot_row, robot_col = robot_cell
+        rows, cols = raw_grid.shape
+        best_goal = None
+        best_score = None
+
+        for d_row in range(-GOAL_SEARCH_RADIUS, GOAL_SEARCH_RADIUS + 1):
+            for d_col in range(-GOAL_SEARCH_RADIUS, GOAL_SEARCH_RADIUS + 1):
+                goal_row = frontier_row + d_row
+                goal_col = frontier_col + d_col
+                if not (0 <= goal_row < rows and 0 <= goal_col < cols):
+                    continue
+                if inflated_grid[goal_row, goal_col] != 0:
+                    continue
+
+                frontier_distance = abs(goal_row - frontier_row) + abs(goal_col - frontier_col)
+                robot_distance = abs(goal_row - robot_row) + abs(goal_col - robot_col)
+                clearance = self.clearance_score(raw_grid, goal_row, goal_col)
+
+                score = (
+                    frontier_distance,
+                    -clearance,
+                    robot_distance,
+                )
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_goal = (goal_row, goal_col)
+
+        return best_goal
+
+    def candidate_frontiers(self, clusters, robot_cell, inflated_grid):
         candidates = []
 
         for cluster in clusters:
-            best_cell = min(
-                cluster,
-                key=lambda cell: abs(cell[0] - robot_row) + abs(cell[1] - robot_col)
+            valid_cells = [
+                cell for cell in cluster
+                if cell not in self.blocked_goals and inflated_grid[cell] == 0
+            ]
+            if not valid_cells:
+                continue
+
+            representative_cell = self.cluster_centroid(valid_cells)
+            ranked_cluster = sorted(
+                valid_cells,
+                key=lambda cell: (
+                    abs(cell[0] - representative_cell[0]) + abs(cell[1] - representative_cell[1]),
+                    -heuristic(robot_cell, cell),
+                ),
             )
 
-            if best_cell in self.blocked_goals:
-                continue
-            if inflated_grid[best_cell] != 0:
-                continue
+            for cell in ranked_cluster[:MAX_FRONTIER_GOALS_PER_CLUSTER]:
+                candidates.append(cell)
 
-            distance = abs(best_cell[0] - robot_row) + abs(best_cell[1] - robot_col)
-            candidates.append((distance, best_cell))
+        return candidates
 
-        candidates.sort(key=lambda item: item[0])
-        return [cell for _, cell in candidates]
-
-    def simplify_path(self, path_world):
-        if len(path_world) <= 2:
-            return path_world
-
-        simplified = [path_world[0]]
-        for index in range(1, len(path_world) - 1):
-            if index % 2 == 0:
-                simplified.append(path_world[index])
-        simplified.append(path_world[-1])
-        return simplified
-
-    def log_plan_status(self, message):
-        now = time.time()
-        if now - self.last_plan_log_time >= 1.0:
-            self.get_logger().info(message)
-            self.last_plan_log_time = now
-
-    def plan_route(self):
+    def choose_goal(self):
         if self.map_data.size == 0:
-            return []
+            return None
 
+        self.prune_blocked_goals()
         pooled_occ = self.pool_map(self.map_data)
         raw_grid = self.classify_grid(pooled_occ)
         inflated_grid = self.inflate_walls(raw_grid)
 
         free_cells = int(np.count_nonzero(raw_grid == 0))
-        blocked_cells = int(np.count_nonzero(raw_grid == 1))
-        unknown_cells = int(np.count_nonzero(raw_grid == 2))
-
         if free_cells < MIN_FREE_CELLS_TO_PLAN:
-            self.log_plan_status(
-                f'Waiting for more mapped free space: free={free_cells} blocked={blocked_cells} unknown={unknown_cells}'
-            )
-            return []
+            return None
 
         try:
             robot_x, robot_y, _ = self.get_pose()
-        except TransformException as exc:
-            self.get_logger().warn(f'Pose unavailable during planning: {exc}')
-            return []
+        except TransformException:
+            return None
 
         robot_cell = self.world_to_pooled_cell(robot_x, robot_y, raw_grid.shape)
         robot_cell = self.nearest_free_to_robot(inflated_grid, robot_cell)
         if robot_cell is None:
-            self.log_plan_status(
-                f'Robot is not near any free cell after inflation: free={free_cells} blocked={blocked_cells} unknown={unknown_cells}'
-            )
-            return []
+            return None
 
-        frontier_clusters = self.find_frontier_clusters(raw_grid)
-        if not frontier_clusters:
-            self.log_plan_status(
-                f'No frontier clusters found: free={free_cells} blocked={blocked_cells} unknown={unknown_cells}'
-            )
-            return []
+        clusters = self.find_frontier_clusters(raw_grid)
+        if not clusters:
+            return None
 
-        candidate_goals = self.rank_frontier_goals(frontier_clusters, robot_cell, inflated_grid)
-        if not candidate_goals:
-            inflated_free_cells = int(np.count_nonzero(inflated_grid == 0))
-            self.log_plan_status(
-                'No usable frontier goals found: '
-                f'free={free_cells} inflated_free={inflated_free_cells} '
-                f'blocked={blocked_cells} unknown={unknown_cells} frontiers={len(frontier_clusters)} '
-                f'blocked_goals={len(self.blocked_goals)}'
-            )
-            return []
+        candidates = self.candidate_frontiers(clusters, robot_cell, inflated_grid)
+        if not candidates:
+            return None
 
-        for goal_cell in candidate_goals:
+        best_goal_cell = None
+        best_goal_world = None
+        best_path_length = -1.0
+
+        for frontier_cell in candidates:
+            goal_cell = self.select_standoff_goal(frontier_cell, robot_cell, raw_grid, inflated_grid)
+            if goal_cell is None:
+                self.mark_goal_region_blocked(frontier_cell)
+                continue
+
             path_cells = astar(inflated_grid, robot_cell, goal_cell)
             if not path_cells:
-                self.blocked_goals.add(goal_cell)
+                self.mark_goal_region_blocked(goal_cell)
                 continue
 
-            self.current_goal_cell = goal_cell
-            path_world = [self.pooled_cell_to_world(row, col) for row, col in path_cells]
-            path_world = self.simplify_path(path_world)
-
-            self.get_logger().info(
-                f'Planned path with {len(path_world)} waypoints to frontier row={goal_cell[0]} col={goal_cell[1]}'
-            )
-            return path_world
-
-        self.get_logger().warn('All candidate frontiers were unreachable.')
-        return []
-
-    def sector_distance(self, center_deg, half_width_deg):
-        if self.scan_ranges.size == 0 or self.scan_angles.size == 0:
-            return None
-
-        center_rad = math.radians(center_deg) % (2.0 * math.pi)
-        half_width_rad = math.radians(half_width_deg)
-        angle_error = np.angle(np.exp(1j * (self.scan_angles - center_rad)))
-        mask = np.abs(angle_error) <= half_width_rad
-
-        if not np.any(mask):
-            return None
-
-        sector_ranges = self.scan_ranges[mask]
-        sector_ranges = sector_ranges[~np.isnan(sector_ranges)]
-        if sector_ranges.size == 0:
-            return None
-
-        return float(np.min(sector_ranges))
-
-    def get_scan_clearance(self):
-        return {
-            'front': self.sector_distance(0.0, FRONT_HALF_ANGLE_DEG),
-            'left': self.sector_distance(90.0, SIDE_CENTER_TOLERANCE_DEG),
-            'back': self.sector_distance(180.0, FRONT_HALF_ANGLE_DEG),
-            'right': self.sector_distance(270.0, SIDE_CENTER_TOLERANCE_DEG),
-        }
-
-    def pick_turn_direction(self, clearance):
-        left = clearance['left']
-        right = clearance['right']
-
-        if left is None and right is None:
-            return 1.0
-        if left is None:
-            return -1.0
-        if right is None:
-            return 1.0
-        return 1.0 if left >= right else -1.0
-
-    def mark_current_goal_blocked(self):
-        if self.current_goal_cell is not None:
-            self.blocked_goals.add(self.current_goal_cell)
-        self.current_goal_cell = None
-        self.path_world = []
-
-    def recover_and_replan(self, reason, turn_sign=None):
-        now = time.time()
-        if now - self.last_replan_time < REPLAN_COOLDOWN:
-            return False
-
-        self.last_replan_time = now
-        self.get_logger().warn(f'Replanning: {reason}')
-
-        self.stop()
-
-        clearance = self.get_scan_clearance()
-        if turn_sign is None:
-            turn_sign = self.pick_turn_direction(clearance)
-
-        reverse_cmd = Twist()
-        if clearance['back'] is None or clearance['back'] > 0.22:
-            reverse_cmd.linear.x = -0.06
-            self.cmd_pub.publish(reverse_cmd)
-            time.sleep(0.45)
-            self.stop()
-
-        rotate_cmd = Twist()
-        rotate_cmd.angular.z = turn_sign * 0.55
-        self.cmd_pub.publish(rotate_cmd)
-        time.sleep(0.6)
-        self.stop()
-
-        self.mark_current_goal_blocked()
-        return True
-
-    def drive_to_waypoint(self, waypoint, is_final_waypoint=False):
-        goal_x, goal_y = waypoint
-        reach_distance = GOAL_REACHED_DISTANCE if is_final_waypoint else WAYPOINT_REACHED_DISTANCE
-
-        try:
-            start_x, start_y, _ = self.get_pose()
-        except TransformException:
-            return False
-
-        last_progress_pose = (start_x, start_y)
-        last_progress_time = time.time()
-
-        while rclpy.ok():
-            rclpy.spin_once(self, timeout_sec=0.05)
-
-            try:
-                robot_x, robot_y, robot_yaw = self.get_pose()
-            except TransformException:
+            path_length = self.path_length_cells(path_cells)
+            if path_length <= best_path_length:
                 continue
 
-            delta_x = goal_x - robot_x
-            delta_y = goal_y - robot_y
-            distance = math.hypot(delta_x, delta_y)
+            best_goal_cell = goal_cell
+            best_goal_world = self.pooled_cell_to_world(goal_cell[0], goal_cell[1])
+            best_path_length = path_length
 
-            if distance < reach_distance:
-                self.stop()
-                return True
+        if best_goal_cell is None:
+            return None
 
-            traveled_since_progress = math.hypot(
-                robot_x - last_progress_pose[0],
-                robot_y - last_progress_pose[1]
-            )
-            if traveled_since_progress >= MIN_PROGRESS_DISTANCE:
-                last_progress_pose = (robot_x, robot_y)
-                last_progress_time = time.time()
-            elif time.time() - last_progress_time > STUCK_TIMEOUT:
-                self.recover_and_replan('robot is not making progress')
-                return False
+        return best_goal_cell, best_goal_world, best_path_length
 
-            clearance = self.get_scan_clearance()
-            front = clearance['front']
-            left = clearance['left']
-            right = clearance['right']
-
-            target_yaw = math.atan2(delta_y, delta_x)
-            yaw_error = wrap_angle(target_yaw - robot_yaw)
-            yaw_error_deg = abs(math.degrees(yaw_error))
-
-            if front is not None and front < STOP_DISTANCE:
-                turn_sign = self.pick_turn_direction(clearance)
-                self.recover_and_replan('front path is blocked', turn_sign=turn_sign)
-                return False
-
-            cmd = Twist()
-            if yaw_error_deg > 25.0:
-                cmd.linear.x = 0.0
-                cmd.angular.z = ANGULAR_SPEED if yaw_error > 0.0 else -ANGULAR_SPEED
-            else:
-                speed_scale = max(0.20, min(1.0, distance / 0.8))
-                cmd.linear.x = LINEAR_SPEED * speed_scale
-
-                if front is not None and front < CAUTION_DISTANCE:
-                    cmd.linear.x *= 0.4
-
-                if left is not None and left < SIDE_CLEARANCE:
-                    cmd.angular.z -= 0.45
-                    cmd.linear.x = min(cmd.linear.x, 0.05)
-                if right is not None and right < SIDE_CLEARANCE:
-                    cmd.angular.z += 0.45
-                    cmd.linear.x = min(cmd.linear.x, 0.05)
-
-                cmd.angular.z += max(-MAX_ANGULAR_CORRECTION, min(MAX_ANGULAR_CORRECTION, 1.4 * yaw_error))
-
-            cmd.angular.z = max(-MAX_ANGULAR_CORRECTION, min(MAX_ANGULAR_CORRECTION, cmd.angular.z))
-            self.cmd_pub.publish(cmd)
-            time.sleep(CONTROL_DT)
-
-        self.stop()
-        return False
-
-    def follow_path(self):
-        while rclpy.ok() and self.path_world:
-            waypoint = self.path_world.pop(0)
-            is_final_waypoint = len(self.path_world) == 0
-            if not self.drive_to_waypoint(waypoint, is_final_waypoint=is_final_waypoint):
-                return False
-
-        self.current_goal_cell = None
-        return True
-
-    def mover(self):
-        if not self.wait_for_system_ready():
-            self.get_logger().warn('Exiting because system is not ready.')
+    def send_nav_goal(self, goal_cell, goal_world, path_length):
+        if not self.nav_client.wait_for_server(timeout_sec=0.5):
+            self.get_logger().warn('Nav2 action server is not available.')
             return
 
-        start_time = time.time()
-        while rclpy.ok() and not self.path_world:
-            rclpy.spin_once(self, timeout_sec=0.1)
-            self.path_world = self.plan_route()
-            if time.time() - start_time > INITIAL_PLAN_TIMEOUT:
-                self.get_logger().warn('No initial path found. Stopping.')
-                self.stop()
-                return
+        goal_x, goal_y = goal_world
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = PoseStamped()
+        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.pose.position.x = goal_x
+        goal_msg.pose.pose.position.y = goal_y
+        goal_msg.pose.pose.orientation.w = 1.0
 
-        while rclpy.ok():
-            if not self.path_world:
-                self.stop()
-                self.path_world = self.plan_route()
-                if not self.path_world:
-                    self.get_logger().info('No more reachable frontier paths. Stopping.')
-                    break
+        self.current_goal_cell = goal_cell
+        self.goal_in_flight = True
 
-            self.follow_path()
+        send_future = self.nav_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
+        send_future.add_done_callback(self.goal_response_callback)
+        self.get_logger().info(
+            f'Sending farthest frontier goal row={goal_cell[0]} col={goal_cell[1]} '
+            f'x={goal_x:.2f} y={goal_y:.2f} path_cells={path_length:.1f}'
+        )
 
-        self.stop()
+    def goal_response_callback(self, future):
+        self.goal_in_flight = False
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn('Nav2 rejected the goal.')
+            if self.current_goal_cell is not None:
+                self.mark_goal_region_blocked(self.current_goal_cell)
+            self.current_goal_cell = None
+            self.goal_handle = None
+            return
+
+        self.goal_handle = goal_handle
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self.goal_result_callback)
+
+    def goal_result_callback(self, future):
+        result = future.result()
+        status = result.status
+        success_status = 4
+
+        if status == success_status:
+            if self.current_goal_cell is not None:
+                self.mark_goal_region_blocked(self.current_goal_cell)
+            self.get_logger().info('Nav2 goal reached.')
+        elif self.current_goal_cell is not None:
+            self.mark_goal_region_blocked(self.current_goal_cell)
+            self.get_logger().warn(f'Nav2 goal ended with status={status}; blocking nearby frontier region.')
+
+        self.goal_handle = None
+        self.current_goal_cell = None
+        self.goal_in_flight = False
+        self.last_progress_pose = None
+        self.last_progress_time = time.time()
+
+    def feedback_callback(self, _feedback_msg):
+        try:
+            robot_x, robot_y, _ = self.get_pose()
+        except TransformException:
+            return
+
+        if self.last_progress_pose is None:
+            self.last_progress_pose = (robot_x, robot_y)
+            self.last_progress_time = time.time()
+            return
+
+        progress = math.hypot(
+            robot_x - self.last_progress_pose[0],
+            robot_y - self.last_progress_pose[1],
+        )
+        if progress >= MIN_PROGRESS_DISTANCE:
+            self.last_progress_pose = (robot_x, robot_y)
+            self.last_progress_time = time.time()
+
+    def cancel_active_goal(self, reason):
+        if self.goal_handle is None:
+            return
+
+        self.get_logger().warn(f'Cancelling current goal: {reason}')
+        if self.current_goal_cell is not None:
+            self.mark_goal_region_blocked(self.current_goal_cell)
+        self.goal_handle.cancel_goal_async()
+        self.goal_handle = None
+        self.current_goal_cell = None
+        self.goal_in_flight = False
+
+    def log_status(self, message):
+        now = time.time()
+        if now - self.last_status_log_time >= 1.0:
+            self.get_logger().info(message)
+            self.last_status_log_time = now
+
+    def exploration_step(self):
+        if not self.system_ready:
+            return
+
+        front = self.front_clearance()
+        if front is not None and front < FRONT_STOP_DISTANCE:
+            if self.goal_handle is not None:
+                self.cancel_active_goal(f'front obstacle too close ({front:.2f} m)')
+            else:
+                self.log_status(f'Waiting for front clearance: {front:.2f} m')
+            return
+
+        if self.goal_in_flight:
+            return
+
+        if self.goal_handle is not None:
+            if time.time() - self.last_progress_time > PROGRESS_TIMEOUT:
+                self.cancel_active_goal('robot is not making progress')
+            return
+
+        chosen_goal = self.choose_goal()
+        if chosen_goal is None:
+            self.log_status('No usable frontier goal available yet.')
+            return
+
+        goal_cell, goal_world, path_length = chosen_goal
+        self.send_nav_goal(goal_cell, goal_world, path_length)
 
 
 def main(args=None):
     rclpy.init(args=args)
-
     node = AutoNav()
+
     try:
-        node.mover()
+        if node.wait_for_system_ready():
+            rclpy.spin(node)
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.')
     finally:
-        node.stop()
         node.destroy_node()
         rclpy.shutdown()
 
