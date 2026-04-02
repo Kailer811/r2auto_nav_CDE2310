@@ -782,11 +782,15 @@ class AutoNav(Node):
             corners, ids, _ = cv2.aruco.detectMarkers(
                 gray, self.aruco_dict, parameters=self.aruco_params)
 
-            cmd = Twist()
+            #cmd = Twist()
 
             if ids is not None:
-                self.aruco_active = True  # 🔥 TAKE CONTROL
-                self.log_status("ARUCO FOUND")
+                # NEW: Stop Nav2 from fighting your velocity commands
+                if self.goal_handle is not None:
+                    self.cancel_active_goal("ArUco marker detected - switching to visual docking")
+                
+                self.aruco_active = True 
+                self.log_status("ARUCO FOUND - NAV2 CANCELLED")
 
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
