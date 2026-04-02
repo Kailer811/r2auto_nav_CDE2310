@@ -16,6 +16,9 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profi
 from sensor_msgs.msg import LaserScan
 import tf2_ros
 from tf2_ros import TransformException
+from sensor_msgs.msg import CompressedImage
+from cv_bridge import CvBridge
+import cv2
 
 
 # ── existing constants ────────────────────────────────────────────────────
@@ -165,6 +168,31 @@ class AutoNav(Node):
         self.get_logger().info('AutoNav started.')
 
         self.create_timer(PLANNER_PERIOD, self.exploration_step)
+
+        # --- ArUco ---
+        self.bridge = CvBridge()
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        self.aruco_params = cv2.aruco.DetectorParameters_create()
+
+        self.camera_matrix = np.array([[1000, 0, 640], [0, 1000, 360], [0, 0, 1]], dtype=float)
+        self.dist_coeffs = np.zeros((5, 1))
+        self.marker_size = 0.05
+
+        self.target_distance = 0.0
+        self.target_x = -0.06
+        self.marker_actions = {0: "fire", 1: "stop", 2: "scan"}
+        self.locked_id = None
+
+        # control flag
+        self.aruco_active = False
+
+        # subscribe
+        self.create_subscription(
+            CompressedImage,
+            '/image_raw/compressed',
+            self.image_callback,
+            10
+        )
 
     # ── callbacks ─────────────────────────────────────────────────────────
 
@@ -709,6 +737,9 @@ class AutoNav(Node):
     def exploration_step(self):
         if not self.system_ready:
             return
+        
+        if self.aruco_active:
+            return
 
         front = self.front_clearance()
         if front is not None and front < FRONT_STOP_DISTANCE:
@@ -742,6 +773,69 @@ class AutoNav(Node):
 
         goal_cell, goal_world, path_length = chosen_goal
         self.send_nav_goal(goal_cell, goal_world, path_length)
+
+    def image_callback(self, msg):
+        try:
+            frame = self.bridge.compressed_imgmsg_to_cv2(msg, 'bgr8')
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            corners, ids, _ = cv2.aruco.detectMarkers(
+                gray, self.aruco_dict, parameters=self.aruco_params)
+
+            cmd = Twist()
+
+            if ids is not None:
+                self.aruco_active = True  # 🔥 TAKE CONTROL
+
+                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                    corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
+
+                distances = [tvecs[i][0][2] for i in range(len(ids))]
+                target_index = np.argmin(distances)
+
+                marker_id = ids[target_index][0]
+                x = tvecs[target_index][0][0]
+                z = tvecs[target_index][0][2]
+
+                if self.locked_id is None:
+                    self.locked_id = marker_id
+
+                if marker_id != self.locked_id:
+                    return
+
+                error_x = x - self.target_x
+                error_z = z - self.target_distance
+
+                align_thresh = 0.03
+                dist_thresh = 0.05
+
+                k_ang = 1.2
+                k_lin = 0.3
+
+                if abs(error_x) > align_thresh and z > 0.2:
+                    cmd.angular.z = -k_ang * error_x
+                elif abs(error_z) > dist_thresh:
+                    cmd.linear.x = k_lin * error_z
+                    cmd.angular.z = -k_ang * error_x
+                else:
+                    cmd.linear.x = 0.0
+                    cmd.angular.z = 0.0
+
+                    action = self.marker_actions.get(marker_id, "none")
+                    self.get_logger().info(f"Aruco action: {action}")
+
+                cmd.linear.x = max(min(cmd.linear.x, 0.22), -0.22)
+                cmd.angular.z = max(min(cmd.angular.z, 1.5), -1.5)
+
+                self.cmd_vel_pub.publish(cmd)
+
+            else:
+                # 🔥 RELEASE CONTROL
+                self.aruco_active = False
+                self.locked_id = None
+
+        except Exception as e:
+            self.get_logger().error(f"Aruco error: {e}")
 
 
 def main(args=None):
