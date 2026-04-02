@@ -828,11 +828,16 @@ class AutoNav(Node):
                 cmd.angular.z = max(min(cmd.angular.z, 1.5), -1.5)
 
                 self.cmd_vel_pub.publish(cmd)
+                cv2.aruco.drawDetectedMarkers(frame, corners)
+                cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[0], tvecs[0], 0.05)
 
             else:
                 # 🔥 RELEASE CONTROL
                 self.aruco_active = False
                 self.locked_id = None
+
+            cv2.imshow("Compressed RPi Stream", frame)
+            cv2.waitKey(1)
 
         except Exception as e:
             self.get_logger().error(f"Aruco error: {e}")
