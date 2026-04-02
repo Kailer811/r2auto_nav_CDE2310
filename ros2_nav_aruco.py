@@ -786,6 +786,7 @@ class AutoNav(Node):
 
             if ids is not None:
                 self.aruco_active = True  # 🔥 TAKE CONTROL
+                self.log_status("ARUCO FOUND")
 
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
@@ -830,6 +831,9 @@ class AutoNav(Node):
                 self.cmd_vel_pub.publish(cmd)
                 cv2.aruco.drawDetectedMarkers(frame, corners)
                 cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[0], tvecs[0], 0.05)
+                self.get_logger().info(
+                    f"[ID {marker_id}] X={x:.2f}, Z={z:.2f}"
+                )
 
             else:
                 # 🔥 RELEASE CONTROL
