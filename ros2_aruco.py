@@ -30,8 +30,8 @@ class ArucoFollowerCompressed(Node):
             Twist,
             '/cmd_vel',
             10)
-        self.target_distance = 0.00  # meters from marker
-        self.target_x = -0.06
+        self.target_distance = 0.26  # meters from marker
+        self.target_x = -0.09
         self.marker_actions = {
             0: "fire",
             1: "stop",
