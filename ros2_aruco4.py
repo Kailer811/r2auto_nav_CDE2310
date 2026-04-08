@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import tf2_ros
 from tf2_ros import TransformException
+import tf2_geometry_msgs
 
 class ArucoFollowerCompressed(Node):
     def __init__(self):
@@ -41,6 +42,9 @@ class ArucoFollowerCompressed(Node):
         }
         self.locked_id = None
 
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
         self.get_logger().info("🚀 Subscribed to COMPRESSED stream. Smoothing out the lag!")
 
     def image_callback(self, msg):
@@ -53,12 +57,17 @@ class ArucoFollowerCompressed(Node):
             cmd = Twist()
 
             if ids is not None:
+                self.get_logger().info("aruco found")
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
 
                 distances = [tvecs[i][0][2] for i in range(len(ids))]
                 target_index = np.argmin(distances)
                 marker_id = ids[target_index][0]
+                
+                if self.locked_id is None:
+                    self.locked_id = marker_id
+
                 if marker_id != self.locked_id:
                     return  # ignore others
                 try:
