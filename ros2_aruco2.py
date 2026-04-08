@@ -73,27 +73,27 @@ class ArucoFollowerCompressed(Node):
                 error_z = z - self.target_distance
 
                 # thresholds
-                align_thresh = 0.03
+                align_thresh = 0.01
                 dist_thresh = 0.03
 
                 # gains
-                k_ang = 1.2
+                k_ang = 0.6
                 k_lin = 0.3
 
                 # --- DOCKING STATE MACHINE ---
-                if abs(error_z) > dist_thresh:
-                    # Phase 2: approach
-                    cmd.linear.x = k_lin * error_z
+                if abs(error_x) > align_thresh:
+                    # Phase 1: ALIGN ONLY
                     cmd.angular.z = -k_ang * error_x
-                
-                elif abs(error_x) > align_thresh and z > 0.2:
-                    # Phase 1: rotate
-                    cmd.angular.z = -k_ang * error_x
+                    cmd.angular.z = np.clip(cmd.angular.z, -0.8, 0.8)
                     cmd.linear.x = 0.0
 
+                elif abs(error_z) > dist_thresh:
+                    # Phase 2: APPROACH ONLY (already aligned)
+                    cmd.linear.x = k_lin * error_z
+                    cmd.angular.z = 0.0
 
                 else:
-                    # --- DOCKED ---
+                    # Phase 3: DOCKED
                     cmd.linear.x = 0.0
                     cmd.angular.z = 0.0
 
@@ -101,13 +101,13 @@ class ArucoFollowerCompressed(Node):
 
                     if action == "fire":
                         self.get_logger().info("🔥 FIRE ACTION")
-                        # trigger actuator here
 
                     elif action == "stop":
                         self.get_logger().info("🛑 STOPPED")
 
                     elif action == "scan":
                         self.get_logger().info("🔍 SCANNING")
+             
 
                 # clamp speeds
                 cmd.linear.x = max(min(cmd.linear.x, 0.22), -0.22)
