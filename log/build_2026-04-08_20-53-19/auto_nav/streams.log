@@ -1,0 +1,35 @@
+[30.631s] Invoking command in '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav': PYTHONPATH=/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/auto_nav build --build-base /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build install --record /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log --single-version-externally-managed install_data
+[30.852s] running egg_info
+[30.852s] writing build/auto_nav/auto_nav.egg-info/PKG-INFO
+[30.852s] writing dependency_links to build/auto_nav/auto_nav.egg-info/dependency_links.txt
+[30.852s] writing entry points to build/auto_nav/auto_nav.egg-info/entry_points.txt
+[30.852s] writing requirements to build/auto_nav/auto_nav.egg-info/requires.txt
+[30.853s] writing top-level names to build/auto_nav/auto_nav.egg-info/top_level.txt
+[30.854s] reading manifest file 'build/auto_nav/auto_nav.egg-info/SOURCES.txt'
+[30.855s] writing manifest file 'build/auto_nav/auto_nav.egg-info/SOURCES.txt'
+[30.855s] running build
+[30.855s] running build_py
+[30.856s] copying ./RamIsBetter.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[30.856s] running install
+[30.857s] running install_lib
+[30.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/RamIsBetter.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[30.859s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/RamIsBetter.py to RamIsBetter.cpython-310.pyc
+[30.860s] running install_data
+[30.861s] running install_egg_info
+[30.862s] removing '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav-0.0.0-py3.10.egg-info' (and everything under it)
+[30.862s] Copying build/auto_nav/auto_nav.egg-info to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav-0.0.0-py3.10.egg-info
+[30.863s] running install_scripts
+[30.881s] Installing RamIsBetter script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.881s] Installing aruco_node script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.881s] Installing auto_nav2 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing auto_nav_draft script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing nav2_go_to_pose script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing r2auto_nav script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing r2mover script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing r2moverotate script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing r2occupancy script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing r2occupancy2 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing r2scanner script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] Installing ros2_nav_aruco script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[30.882s] writing list of installed files to '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log'
+[30.909s] Invoked command in '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav' returned '0': PYTHONPATH=/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/auto_nav build --build-base /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build install --record /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log --single-version-externally-managed install_data

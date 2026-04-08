@@ -6,6 +6,7 @@ setup(
     name=package_name,
     version='0.0.0',
     packages=[package_name],
+    package_dir={package_name: '.'},
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -29,6 +30,9 @@ setup(
 	    'auto_nav2 = auto_nav.auto_nav2:main',
 	    'auto_nav_draft = auto_nav.auto_nav_draft:main',
 	    'aruco_node = auto_nav.aruco_node:main',
+            'ros2_nav_aruco = auto_nav.ros2_nav_aruco:main',
+            'nav2_go_to_pose = auto_nav.nav2_go_to_pose:main',
+            'RamIsBetter = auto_nav.RamIsBetter:main',
         ],
     },
 )

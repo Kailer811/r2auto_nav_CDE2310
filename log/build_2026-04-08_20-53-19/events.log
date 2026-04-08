@@ -1,0 +1,348 @@
+[0.000000] (-) TimerEvent: {}
+[0.000514] (auto_nav) JobQueued: {'identifier': 'auto_nav', 'dependencies': OrderedDict()}
+[0.000656] (auto_nav) JobStarted: {'identifier': 'auto_nav'}
+[0.099812] (-) TimerEvent: {}
+[0.200038] (-) TimerEvent: {}
+[0.300244] (-) TimerEvent: {}
+[0.400425] (-) TimerEvent: {}
+[0.500635] (-) TimerEvent: {}
+[0.600870] (-) TimerEvent: {}
+[0.701095] (-) TimerEvent: {}
+[0.801325] (-) TimerEvent: {}
+[0.901543] (-) TimerEvent: {}
+[1.001794] (-) TimerEvent: {}
+[1.102014] (-) TimerEvent: {}
+[1.202208] (-) TimerEvent: {}
+[1.302426] (-) TimerEvent: {}
+[1.402653] (-) TimerEvent: {}
+[1.502869] (-) TimerEvent: {}
+[1.603116] (-) TimerEvent: {}
+[1.703334] (-) TimerEvent: {}
+[1.803542] (-) TimerEvent: {}
+[1.903753] (-) TimerEvent: {}
+[2.003978] (-) TimerEvent: {}
+[2.104184] (-) TimerEvent: {}
+[2.204356] (-) TimerEvent: {}
+[2.304588] (-) TimerEvent: {}
+[2.404815] (-) TimerEvent: {}
+[2.505004] (-) TimerEvent: {}
+[2.605186] (-) TimerEvent: {}
+[2.705392] (-) TimerEvent: {}
+[2.805638] (-) TimerEvent: {}
+[2.905844] (-) TimerEvent: {}
+[3.006097] (-) TimerEvent: {}
+[3.106279] (-) TimerEvent: {}
+[3.206505] (-) TimerEvent: {}
+[3.306808] (-) TimerEvent: {}
+[3.407023] (-) TimerEvent: {}
+[3.507240] (-) TimerEvent: {}
+[3.607453] (-) TimerEvent: {}
+[3.707657] (-) TimerEvent: {}
+[3.807864] (-) TimerEvent: {}
+[3.908067] (-) TimerEvent: {}
+[4.008262] (-) TimerEvent: {}
+[4.108471] (-) TimerEvent: {}
+[4.208657] (-) TimerEvent: {}
+[4.308838] (-) TimerEvent: {}
+[4.409043] (-) TimerEvent: {}
+[4.509259] (-) TimerEvent: {}
+[4.609460] (-) TimerEvent: {}
+[4.709656] (-) TimerEvent: {}
+[4.809882] (-) TimerEvent: {}
+[4.910063] (-) TimerEvent: {}
+[5.010243] (-) TimerEvent: {}
+[5.110458] (-) TimerEvent: {}
+[5.210664] (-) TimerEvent: {}
+[5.310898] (-) TimerEvent: {}
+[5.411117] (-) TimerEvent: {}
+[5.511340] (-) TimerEvent: {}
+[5.611574] (-) TimerEvent: {}
+[5.711806] (-) TimerEvent: {}
+[5.812036] (-) TimerEvent: {}
+[5.912289] (-) TimerEvent: {}
+[6.012520] (-) TimerEvent: {}
+[6.112779] (-) TimerEvent: {}
+[6.212971] (-) TimerEvent: {}
+[6.313157] (-) TimerEvent: {}
+[6.413364] (-) TimerEvent: {}
+[6.513581] (-) TimerEvent: {}
+[6.613789] (-) TimerEvent: {}
+[6.713980] (-) TimerEvent: {}
+[6.814187] (-) TimerEvent: {}
+[6.914392] (-) TimerEvent: {}
+[7.014655] (-) TimerEvent: {}
+[7.114923] (-) TimerEvent: {}
+[7.215153] (-) TimerEvent: {}
+[7.315365] (-) TimerEvent: {}
+[7.415589] (-) TimerEvent: {}
+[7.515786] (-) TimerEvent: {}
+[7.615993] (-) TimerEvent: {}
+[7.716199] (-) TimerEvent: {}
+[7.816400] (-) TimerEvent: {}
+[7.916624] (-) TimerEvent: {}
+[8.016886] (-) TimerEvent: {}
+[8.117148] (-) TimerEvent: {}
+[8.217382] (-) TimerEvent: {}
+[8.317607] (-) TimerEvent: {}
+[8.417798] (-) TimerEvent: {}
+[8.518004] (-) TimerEvent: {}
+[8.618191] (-) TimerEvent: {}
+[8.718385] (-) TimerEvent: {}
+[8.818612] (-) TimerEvent: {}
+[8.918817] (-) TimerEvent: {}
+[9.018982] (-) TimerEvent: {}
+[9.119183] (-) TimerEvent: {}
+[9.219365] (-) TimerEvent: {}
+[9.319601] (-) TimerEvent: {}
+[9.419820] (-) TimerEvent: {}
+[9.520023] (-) TimerEvent: {}
+[9.620224] (-) TimerEvent: {}
+[9.720433] (-) TimerEvent: {}
+[9.820631] (-) TimerEvent: {}
+[9.920842] (-) TimerEvent: {}
+[10.021059] (-) TimerEvent: {}
+[10.121275] (-) TimerEvent: {}
+[10.221478] (-) TimerEvent: {}
+[10.321632] (-) TimerEvent: {}
+[10.421870] (-) TimerEvent: {}
+[10.522119] (-) TimerEvent: {}
+[10.622304] (-) TimerEvent: {}
+[10.722489] (-) TimerEvent: {}
+[10.822682] (-) TimerEvent: {}
+[10.922844] (-) TimerEvent: {}
+[11.023048] (-) TimerEvent: {}
+[11.123276] (-) TimerEvent: {}
+[11.223457] (-) TimerEvent: {}
+[11.323655] (-) TimerEvent: {}
+[11.423867] (-) TimerEvent: {}
+[11.524052] (-) TimerEvent: {}
+[11.624249] (-) TimerEvent: {}
+[11.724467] (-) TimerEvent: {}
+[11.824656] (-) TimerEvent: {}
+[11.924880] (-) TimerEvent: {}
+[12.025097] (-) TimerEvent: {}
+[12.125298] (-) TimerEvent: {}
+[12.225501] (-) TimerEvent: {}
+[12.325691] (-) TimerEvent: {}
+[12.425868] (-) TimerEvent: {}
+[12.526043] (-) TimerEvent: {}
+[12.626267] (-) TimerEvent: {}
+[12.726494] (-) TimerEvent: {}
+[12.826720] (-) TimerEvent: {}
+[12.926940] (-) TimerEvent: {}
+[13.027153] (-) TimerEvent: {}
+[13.127382] (-) TimerEvent: {}
+[13.227615] (-) TimerEvent: {}
+[13.327812] (-) TimerEvent: {}
+[13.427978] (-) TimerEvent: {}
+[13.528160] (-) TimerEvent: {}
+[13.628329] (-) TimerEvent: {}
+[13.728540] (-) TimerEvent: {}
+[13.828793] (-) TimerEvent: {}
+[13.929008] (-) TimerEvent: {}
+[14.029269] (-) TimerEvent: {}
+[14.129528] (-) TimerEvent: {}
+[14.229782] (-) TimerEvent: {}
+[14.330001] (-) TimerEvent: {}
+[14.430212] (-) TimerEvent: {}
+[14.530453] (-) TimerEvent: {}
+[14.630719] (-) TimerEvent: {}
+[14.730920] (-) TimerEvent: {}
+[14.831099] (-) TimerEvent: {}
+[14.931283] (-) TimerEvent: {}
+[15.031540] (-) TimerEvent: {}
+[15.131829] (-) TimerEvent: {}
+[15.232053] (-) TimerEvent: {}
+[15.332256] (-) TimerEvent: {}
+[15.432435] (-) TimerEvent: {}
+[15.532605] (-) TimerEvent: {}
+[15.632805] (-) TimerEvent: {}
+[15.733007] (-) TimerEvent: {}
+[15.833247] (-) TimerEvent: {}
+[15.933444] (-) TimerEvent: {}
+[16.033645] (-) TimerEvent: {}
+[16.133844] (-) TimerEvent: {}
+[16.234069] (-) TimerEvent: {}
+[16.334275] (-) TimerEvent: {}
+[16.434472] (-) TimerEvent: {}
+[16.534744] (-) TimerEvent: {}
+[16.634965] (-) TimerEvent: {}
+[16.735170] (-) TimerEvent: {}
+[16.835370] (-) TimerEvent: {}
+[16.935544] (-) TimerEvent: {}
+[17.035766] (-) TimerEvent: {}
+[17.135989] (-) TimerEvent: {}
+[17.236229] (-) TimerEvent: {}
+[17.336434] (-) TimerEvent: {}
+[17.436677] (-) TimerEvent: {}
+[17.536909] (-) TimerEvent: {}
+[17.637132] (-) TimerEvent: {}
+[17.737315] (-) TimerEvent: {}
+[17.837506] (-) TimerEvent: {}
+[17.937736] (-) TimerEvent: {}
+[18.037943] (-) TimerEvent: {}
+[18.138135] (-) TimerEvent: {}
+[18.238333] (-) TimerEvent: {}
+[18.338572] (-) TimerEvent: {}
+[18.438778] (-) TimerEvent: {}
+[18.538960] (-) TimerEvent: {}
+[18.639124] (-) TimerEvent: {}
+[18.739324] (-) TimerEvent: {}
+[18.839570] (-) TimerEvent: {}
+[18.939784] (-) TimerEvent: {}
+[19.039984] (-) TimerEvent: {}
+[19.140221] (-) TimerEvent: {}
+[19.240446] (-) TimerEvent: {}
+[19.340617] (-) TimerEvent: {}
+[19.440825] (-) TimerEvent: {}
+[19.540998] (-) TimerEvent: {}
+[19.641193] (-) TimerEvent: {}
+[19.741394] (-) TimerEvent: {}
+[19.841616] (-) TimerEvent: {}
+[19.941866] (-) TimerEvent: {}
+[20.042109] (-) TimerEvent: {}
+[20.142372] (-) TimerEvent: {}
+[20.242661] (-) TimerEvent: {}
+[20.342904] (-) TimerEvent: {}
+[20.443136] (-) TimerEvent: {}
+[20.543341] (-) TimerEvent: {}
+[20.643532] (-) TimerEvent: {}
+[20.743746] (-) TimerEvent: {}
+[20.843953] (-) TimerEvent: {}
+[20.944145] (-) TimerEvent: {}
+[21.044396] (-) TimerEvent: {}
+[21.144648] (-) TimerEvent: {}
+[21.244904] (-) TimerEvent: {}
+[21.345136] (-) TimerEvent: {}
+[21.445328] (-) TimerEvent: {}
+[21.545511] (-) TimerEvent: {}
+[21.645744] (-) TimerEvent: {}
+[21.745994] (-) TimerEvent: {}
+[21.846192] (-) TimerEvent: {}
+[21.946381] (-) TimerEvent: {}
+[22.046584] (-) TimerEvent: {}
+[22.146825] (-) TimerEvent: {}
+[22.247123] (-) TimerEvent: {}
+[22.347350] (-) TimerEvent: {}
+[22.447521] (-) TimerEvent: {}
+[22.547693] (-) TimerEvent: {}
+[22.647851] (-) TimerEvent: {}
+[22.748030] (-) TimerEvent: {}
+[22.848210] (-) TimerEvent: {}
+[22.948386] (-) TimerEvent: {}
+[23.048566] (-) TimerEvent: {}
+[23.148787] (-) TimerEvent: {}
+[23.249034] (-) TimerEvent: {}
+[23.349240] (-) TimerEvent: {}
+[23.449472] (-) TimerEvent: {}
+[23.549681] (-) TimerEvent: {}
+[23.649851] (-) TimerEvent: {}
+[23.750042] (-) TimerEvent: {}
+[23.850252] (-) TimerEvent: {}
+[23.950451] (-) TimerEvent: {}
+[24.050628] (-) TimerEvent: {}
+[24.150807] (-) TimerEvent: {}
+[24.250985] (-) TimerEvent: {}
+[24.351191] (-) TimerEvent: {}
+[24.451413] (-) TimerEvent: {}
+[24.551646] (-) TimerEvent: {}
+[24.651843] (-) TimerEvent: {}
+[24.752023] (-) TimerEvent: {}
+[24.852249] (-) TimerEvent: {}
+[24.952481] (-) TimerEvent: {}
+[25.052708] (-) TimerEvent: {}
+[25.152902] (-) TimerEvent: {}
+[25.253093] (-) TimerEvent: {}
+[25.353296] (-) TimerEvent: {}
+[25.453483] (-) TimerEvent: {}
+[25.553624] (-) TimerEvent: {}
+[25.653841] (-) TimerEvent: {}
+[25.754051] (-) TimerEvent: {}
+[25.854275] (-) TimerEvent: {}
+[25.954539] (-) TimerEvent: {}
+[26.054781] (-) TimerEvent: {}
+[26.155004] (-) TimerEvent: {}
+[26.255220] (-) TimerEvent: {}
+[26.355439] (-) TimerEvent: {}
+[26.455617] (-) TimerEvent: {}
+[26.555815] (-) TimerEvent: {}
+[26.656009] (-) TimerEvent: {}
+[26.756226] (-) TimerEvent: {}
+[26.856448] (-) TimerEvent: {}
+[26.956670] (-) TimerEvent: {}
+[27.056924] (-) TimerEvent: {}
+[27.157140] (-) TimerEvent: {}
+[27.257333] (-) TimerEvent: {}
+[27.357539] (-) TimerEvent: {}
+[27.457765] (-) TimerEvent: {}
+[27.557975] (-) TimerEvent: {}
+[27.658171] (-) TimerEvent: {}
+[27.758374] (-) TimerEvent: {}
+[27.858604] (-) TimerEvent: {}
+[27.958794] (-) TimerEvent: {}
+[28.058973] (-) TimerEvent: {}
+[28.159146] (-) TimerEvent: {}
+[28.259348] (-) TimerEvent: {}
+[28.359544] (-) TimerEvent: {}
+[28.459767] (-) TimerEvent: {}
+[28.559970] (-) TimerEvent: {}
+[28.660157] (-) TimerEvent: {}
+[28.760358] (-) TimerEvent: {}
+[28.860610] (-) TimerEvent: {}
+[28.960840] (-) TimerEvent: {}
+[29.061048] (-) TimerEvent: {}
+[29.161270] (-) TimerEvent: {}
+[29.261491] (-) TimerEvent: {}
+[29.361755] (-) TimerEvent: {}
+[29.461993] (-) TimerEvent: {}
+[29.562223] (-) TimerEvent: {}
+[29.662859] (-) TimerEvent: {}
+[29.763068] (-) TimerEvent: {}
+[29.863274] (-) TimerEvent: {}
+[29.963465] (-) TimerEvent: {}
+[30.063633] (-) TimerEvent: {}
+[30.163815] (-) TimerEvent: {}
+[30.263990] (-) TimerEvent: {}
+[30.364185] (-) TimerEvent: {}
+[30.464403] (-) TimerEvent: {}
+[30.564599] (-) TimerEvent: {}
+[30.630400] (auto_nav) Command: {'cmd': ['/usr/bin/python3', '-W', 'ignore:setup.py install is deprecated', '-W', 'ignore:easy_install command is deprecated', 'setup.py', 'egg_info', '--egg-base', 'build/auto_nav', 'build', '--build-base', '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build', 'install', '--record', '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log', '--single-version-externally-managed', 'install_data'], 'cwd': '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav', 'env': {'GJS_DEBUG_TOPICS': 'JS ERROR;JS LOG', 'LESSOPEN': '| /usr/bin/lesspipe %s', 'VSCODE_CWD': '/home/ramanathan', 'VSCODE_ESM_ENTRYPOINT': 'vs/workbench/api/node/extensionHostProcess', 'CODEX_CI': '1', 'LANGUAGE': 'en_SG:en', 'USER': 'ramanathan', 'SNAP_COMMON': '/var/snap/code/common', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE': 'codex_vscode', 'VSCODE_NLS_CONFIG': '{"userLocale":"en-gb","osLocale":"en-sg","resolvedLanguage":"en","defaultMessagesFile":"/snap/code/230/usr/share/code/resources/app/out/nls.messages.json","locale":"en-gb","availableLanguages":{}}', 'FONTCONFIG_PATH': '/etc/fonts', 'GIO_MODULE_DIR': '/home/ramanathan/snap/code/common/.cache/gio-modules', 'VSCODE_HANDLES_UNCAUGHT_ERRORS': 'true', 'XDG_SESSION_TYPE': 'x11', 'DEBUG': 'release', 'SNAP_UID': '1000', 'SHLVL': '0', 'LD_LIBRARY_PATH': '/home/ramanathan/turtlebot3_ws/install/turtlebot3_msgs/lib:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk_custom_interfaces/lib:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:', 'HOME': '/home/ramanathan', 'CHROME_DESKTOP': 'code.desktop', 'SNAP_LIBRARY_PATH': '/var/lib/snapd/lib/gl:/var/lib/snapd/lib/gl32', 'DESKTOP_SESSION': 'ubuntu', 'SNAP_USER_DATA': '/home/ramanathan/snap/code/230', 'GTK_PATH': '/snap/code/230/usr/lib/x86_64-linux-gnu/gtk-3.0', 'VSCODE_IPC_HOOK': '/run/user/1000/vscode-eda7945a-1.11-main.sock', 'GTK_IM_MODULE_FILE': '/home/ramanathan/snap/code/common/.cache/immodules/immodules.cache', 'GIO_LAUNCHED_DESKTOP_FILE': '/var/lib/snapd/desktop/applications/code_code.desktop', 'GAZEBO_MASTER_URI': 'http://localhost:11345', 'ROS_PYTHON_VERSION': '3', 'GNOME_SHELL_SESSION_MODE': 'ubuntu', 'GTK_MODULES': 'gail:atk-bridge', 'PAGER': 'cat', 'MANAGERPID': '2263', 'LC_CTYPE': 'C.UTF-8', 'SYSTEMD_EXEC_PID': '2520', 'NO_COLOR': '1', 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/1000/bus', 'SNAP_REVISION': '230', 'COLORTERM': '', 'GIO_LAUNCHED_DESKTOP_FILE_PID': '4023', 'VSCODE_CRASH_REPORTER_PROCESS_TYPE': 'extensionHost', 'COLCON_PREFIX_PATH': '/home/ramanathan/colcon_ws/install:/home/ramanathan/colcon_ws/src/auto_nav/install:/home/ramanathan/turtlebot3_ws/install', 'ROS_DISTRO': 'humble', 'GTK_IM_MODULE': 'ibus', 'LOGNAME': 'ramanathan', 'SNAP_CONTEXT': 'qGHg18hCPgjYqop_T8zlkD3_5xKD_AfBZ0YFucp-Jd3N0-N-od_B', 'JOURNAL_STREAM': '8:10610', '_': '/usr/bin/colcon', 'ROS_VERSION': '2', 'XDG_CONFIG_DIRS_VSCODE_SNAP_ORIG': '/etc/xdg/xdg-ubuntu:/etc/xdg', 'XDG_SESSION_CLASS': 'user', 'SNAP_VERSION': '07ff9d61', 'XDG_DATA_DIRS_VSCODE_SNAP_ORIG': '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop', 'RUST_LOG': 'warn', 'USERNAME': 'ramanathan', 'TERM': 'dumb', 'GAZEBO_MODEL_PATH': '/home/ramanathan/colcon_ws/src/turtlebot3_simulations/turtlebot3_gazebo/models', 'GNOME_DESKTOP_SESSION_ID': 'this-is-deprecated', 'SNAP_INSTANCE_NAME': 'code', 'FC_FONTATIONS': '1', 'ROS_LOCALHOST_ONLY': '0', 'WINDOWPATH': '2', 'OGRE_RESOURCE_PATH': '/usr/lib/x86_64-linux-gnu/OGRE-1.9.0', 'PATH': '/home/ramanathan/.local/bin:/home/ramanathan/.codex/tmp/arg0/codex-arg0sxEo4s:/home/ramanathan/.local/bin:/opt/ros/humble/bin:/home/ramanathan/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin:/home/ramanathan/.vscode/extensions/openai.chatgpt-26.325.31654-linux-x64/bin/linux-x86_64', 'SESSION_MANAGER': 'local/ramanathan-LOQ-15ARP9:@/tmp/.ICE-unix/2494,unix/ramanathan-LOQ-15ARP9:/tmp/.ICE-unix/2494', 'GTK_EXE_PREFIX': '/snap/code/230/usr', 'INVOCATION_ID': '42a558c3052f43ee8faead60750cc8af', 'XDG_MENU_PREFIX': 'gnome-', 'SNAP_DATA': '/var/snap/code/230', 'XDG_RUNTIME_DIR': '/run/user/1000', 'GDK_BACKEND': 'x11', 'DISPLAY': ':1', 'LOCPATH': '/snap/code/230/usr/lib/locale', 'CODEX_SANDBOX_NETWORK_DISABLED': '1', 'LANG': 'en_US.UTF-8', 'XDG_CURRENT_DESKTOP': 'ubuntu:GNOME', 'XDG_DATA_HOME': '/home/ramanathan/snap/code/230/.local/share', 'XMODIFIERS': '@im=ibus', 'GH_PAGER': 'cat', 'XDG_SESSION_DESKTOP': 'ubuntu', 'XAUTHORITY': '/run/user/1000/gdm/Xauthority', 'SSH_AGENT_LAUNCHER': 'gnome-keyring', 'SNAP_USER_COMMON': '/home/ramanathan/snap/code/common', 'SSH_AUTH_SOCK': '/run/user/1000/keyring/ssh', 'GSETTINGS_SCHEMA_DIR': '/home/ramanathan/snap/code/230/.local/share/glib-2.0/schemas', 'ROS_DOMAIN_ID': '37', 'SNAP_ARCH': 'amd64', 'AMENT_PREFIX_PATH': '/home/ramanathan/colcon_ws/install/turtlebot3_simulations:/home/ramanathan/colcon_ws/install/turtlebot3_gazebo:/home/ramanathan/colcon_ws/install/turtlebot3_fake_node:/home/ramanathan/colcon_ws/install/py_pubsub:/home/ramanathan/colcon_ws/install/auto_nav:/home/ramanathan/colcon_ws/src/auto_nav/install/auto_nav:/home/ramanathan/turtlebot3_ws/install/turtlebot3:/home/ramanathan/turtlebot3_ws/install/turtlebot3_teleop:/home/ramanathan/turtlebot3_ws/install/turtlebot3_bringup:/home/ramanathan/turtlebot3_ws/install/turtlebot3_node:/home/ramanathan/turtlebot3_ws/install/turtlebot3_navigation2:/home/ramanathan/turtlebot3_ws/install/turtlebot3_example:/home/ramanathan/turtlebot3_ws/install/turtlebot3_msgs:/home/ramanathan/turtlebot3_ws/install/turtlebot3_description:/home/ramanathan/turtlebot3_ws/install/turtlebot3_cartographer:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk_examples:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk_custom_interfaces:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk:/opt/ros/humble', 'SNAP_COOKIE': 'qGHg18hCPgjYqop_T8zlkD3_5xKD_AfBZ0YFucp-Jd3N0-N-od_B', 'SHELL': '/bin/bash', 'GDK_PIXBUF_MODULEDIR': '/snap/code/230/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders', 'QT_ACCESSIBILITY': '1', 'ELECTRON_RUN_AS_NODE': '1', 'GDMSESSION': 'ubuntu', 'LESSCLOSE': '/usr/bin/lesspipe %s %s', 'FONTCONFIG_FILE': '/etc/fonts/fonts.conf', 'SNAP_NAME': 'code', 'CODEX_THREAD_ID': '019d6cd2-e694-7973-b3fa-744c890d91e9', 'GDK_PIXBUF_MODULE_FILE': '/home/ramanathan/snap/code/common/.cache/gdk-pixbuf-loaders.cache', 'GPG_AGENT_INFO': '/run/user/1000/gnupg/S.gpg-agent:0:1', 'GAZEBO_RESOURCE_PATH': '/usr/share/gazebo-11:', 'GJS_DEBUG_OUTPUT': 'stderr', 'GAZEBO_MODEL_DATABASE_URI': 'http://models.gazebosim.org', 'SNAP_LAUNCHER_ARCH_TRIPLET': 'x86_64-linux-gnu', 'GIT_PAGER': 'cat', 'QT_IM_MODULE': 'ibus', 'PWD': '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav', 'VSCODE_CLI': '1', 'TURTLEBOT3_MODEL': 'burger', 'LC_ALL': 'en_US.UTF-8', 'XDG_CONFIG_DIRS': '/etc/xdg/xdg-ubuntu:/etc/xdg', 'SNAP_REAL_HOME': '/home/ramanathan', 'VSCODE_CODE_CACHE_PATH': '/home/ramanathan/.config/Code/CachedData/07ff9d6178ede9a1bd12ad3399074d726ebe6e43', 'GAZEBO_PLUGIN_PATH': '/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:', 'XDG_DATA_DIRS': '/home/ramanathan/snap/code/230/.local/share:/home/ramanathan/snap/code/230:/snap/code/230/usr/share:/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop', 'SNAP_EUID': '1000', 'PYTHONPATH': '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages:/home/ramanathan/colcon_ws/build/py_pubsub:/home/ramanathan/colcon_ws/install/py_pubsub/lib/python3.10/site-packages:/home/ramanathan/colcon_ws/install/auto_nav/lib/python3.10/site-packages:/home/ramanathan/colcon_ws/src/auto_nav/install/auto_nav/lib/python3.10/site-packages:/home/ramanathan/turtlebot3_ws/build/turtlebot3_teleop:/home/ramanathan/turtlebot3_ws/install/turtlebot3_teleop/lib/python3.10/site-packages:/home/ramanathan/turtlebot3_ws/build/turtlebot3_example:/home/ramanathan/turtlebot3_ws/install/turtlebot3_example/lib/python3.10/site-packages:/home/ramanathan/turtlebot3_ws/install/turtlebot3_msgs/local/lib/python3.10/dist-packages:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk_custom_interfaces/local/lib/python3.10/dist-packages:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages', 'SNAP': '/snap/code/230', 'COLCON': '1', 'ELECTRON_NO_ATTACH_CONSOLE': '1', 'CMAKE_PREFIX_PATH': '/home/ramanathan/colcon_ws/install/turtlebot3_simulations:/home/ramanathan/colcon_ws/install/turtlebot3_gazebo:/home/ramanathan/colcon_ws/install/turtlebot3_fake_node:/home/ramanathan/turtlebot3_ws/install/turtlebot3:/home/ramanathan/turtlebot3_ws/install/turtlebot3_bringup:/home/ramanathan/turtlebot3_ws/install/turtlebot3_node:/home/ramanathan/turtlebot3_ws/install/turtlebot3_navigation2:/home/ramanathan/turtlebot3_ws/install/turtlebot3_msgs:/home/ramanathan/turtlebot3_ws/install/turtlebot3_description:/home/ramanathan/turtlebot3_ws/install/turtlebot3_cartographer:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk_examples:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk_custom_interfaces:/home/ramanathan/turtlebot3_ws/install/dynamixel_sdk', 'VSCODE_PID': '4419'}, 'shell': False}
+[30.664720] (-) TimerEvent: {}
+[30.764926] (-) TimerEvent: {}
+[30.852045] (auto_nav) StdoutLine: {'line': b'running egg_info\n'}
+[30.852594] (auto_nav) StdoutLine: {'line': b'writing build/auto_nav/auto_nav.egg-info/PKG-INFO\n'}
+[30.852868] (auto_nav) StdoutLine: {'line': b'writing dependency_links to build/auto_nav/auto_nav.egg-info/dependency_links.txt\n'}
+[30.852991] (auto_nav) StdoutLine: {'line': b'writing entry points to build/auto_nav/auto_nav.egg-info/entry_points.txt\n'}
+[30.853096] (auto_nav) StdoutLine: {'line': b'writing requirements to build/auto_nav/auto_nav.egg-info/requires.txt\n'}
+[30.853153] (auto_nav) StdoutLine: {'line': b'writing top-level names to build/auto_nav/auto_nav.egg-info/top_level.txt\n'}
+[30.854946] (auto_nav) StdoutLine: {'line': b"reading manifest file 'build/auto_nav/auto_nav.egg-info/SOURCES.txt'\n"}
+[30.855688] (auto_nav) StdoutLine: {'line': b"writing manifest file 'build/auto_nav/auto_nav.egg-info/SOURCES.txt'\n"}
+[30.855822] (auto_nav) StdoutLine: {'line': b'running build\n'}
+[30.855866] (auto_nav) StdoutLine: {'line': b'running build_py\n'}
+[30.856599] (auto_nav) StdoutLine: {'line': b'copying ./RamIsBetter.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav\n'}
+[30.856920] (auto_nav) StdoutLine: {'line': b'running install\n'}
+[30.857154] (auto_nav) StdoutLine: {'line': b'running install_lib\n'}
+[30.858356] (auto_nav) StdoutLine: {'line': b'copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/RamIsBetter.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav\n'}
+[30.859258] (auto_nav) StdoutLine: {'line': b'byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/RamIsBetter.py to RamIsBetter.cpython-310.pyc\n'}
+[30.860934] (auto_nav) StdoutLine: {'line': b'running install_data\n'}
+[30.861125] (auto_nav) StdoutLine: {'line': b'running install_egg_info\n'}
+[30.862744] (auto_nav) StdoutLine: {'line': b"removing '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav-0.0.0-py3.10.egg-info' (and everything under it)\n"}
+[30.863044] (auto_nav) StdoutLine: {'line': b'Copying build/auto_nav/auto_nav.egg-info to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav-0.0.0-py3.10.egg-info\n'}
+[30.863976] (auto_nav) StdoutLine: {'line': b'running install_scripts\n'}
+[30.864976] (-) TimerEvent: {}
+[30.881263] (auto_nav) StdoutLine: {'line': b'Installing RamIsBetter script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.881819] (auto_nav) StdoutLine: {'line': b'Installing aruco_node script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.881968] (auto_nav) StdoutLine: {'line': b'Installing auto_nav2 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882128] (auto_nav) StdoutLine: {'line': b'Installing auto_nav_draft script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882254] (auto_nav) StdoutLine: {'line': b'Installing nav2_go_to_pose script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882349] (auto_nav) StdoutLine: {'line': b'Installing r2auto_nav script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882418] (auto_nav) StdoutLine: {'line': b'Installing r2mover script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882481] (auto_nav) StdoutLine: {'line': b'Installing r2moverotate script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882547] (auto_nav) StdoutLine: {'line': b'Installing r2occupancy script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882641] (auto_nav) StdoutLine: {'line': b'Installing r2occupancy2 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882704] (auto_nav) StdoutLine: {'line': b'Installing r2scanner script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882814] (auto_nav) StdoutLine: {'line': b'Installing ros2_nav_aruco script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin\n'}
+[30.882889] (auto_nav) StdoutLine: {'line': b"writing list of installed files to '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log'\n"}
+[30.909239] (auto_nav) CommandEnded: {'returncode': 0}
+[30.920681] (auto_nav) JobEnded: {'identifier': 'auto_nav', 'rc': 0}
+[30.921612] (-) EventReactorShutdown: {}
