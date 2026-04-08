@@ -12,6 +12,8 @@ import numpy as np
 import tf2_ros
 import math
 from tf2_ros import TransformException
+from geometry_msgs.msg import Twist
+
 
 
 DEFAULT_CAMERA_FRAMES = [
@@ -63,6 +65,16 @@ class RamIsBetter(Node):
         # State variables
         self.locked_id = None
         self.goal_active = False
+
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.docking = False
+        self.dock_target_distance = 0.15  # how close to stop (metres)
+
+        # PID gains — tune these
+        self.kp_linear = 0.4
+        self.kp_angular = 0.6
+        self.ki_angular = 0.01
+        self.angular_integral = 0.0
         
         self.get_logger().info("RamIsBetter node initialized. Ready to detect ArUco markers and navigate towards them!")
 
@@ -95,16 +107,24 @@ class RamIsBetter(Node):
                 if marker_id == self.locked_id:
                     # Transform marker position from camera frame to map frame
                     marker_pose_map = self.transform_marker_to_map(tvec)
-                    
-                    if marker_pose_map is not None:
-                        # Navigate to a position in front of the marker
-                        target_pose = self.calculate_target_pose(marker_pose_map)
-                        self.send_navigation_goal(target_pose)
-                        
-                        self.get_logger().info(f"Navigating towards ArUco marker ID {marker_id} at position x={target_pose.pose.position.x:.2f}, y={target_pose.pose.position.y:.2f}")
+                    if self.docking:
+                        # Precise docking: use raw camera-frame tvec directly
+                        self.run_docking(tvec, rvecs[target_index][0])
                     else:
-                        self.get_logger().warn("Could not transform marker position to map frame")
-                
+                        # Coarse Nav2 phase
+                        marker_pose_map = self.transform_marker_to_map(tvec)
+                        if marker_pose_map is not None:
+                            target_pose = self.calculate_target_pose(marker_pose_map)
+                            self.send_navigation_goal(target_pose)
+                else:
+                    if self.locked_id is not None:
+                        self.get_logger().info("Marker lost. Resetting.")
+                        if self.docking:
+                            self.stop_robot()   # don't drive blind
+                            self.docking = False
+                        self.locked_id = None
+                        self.active_source_frame = None
+                    
                 # Draw detected markers for visualization
                 cv2.aruco.drawDetectedMarkers(frame, corners)
                 
@@ -263,11 +283,53 @@ class RamIsBetter(Node):
     def goal_result_callback(self, future):
         result = future.result()
         if result.status == 4:  # SUCCEEDED
-            self.get_logger().info('Navigation goal reached successfully!')
+            self.get_logger().info('Nav2 done. Starting precise docking...')
+            self.docking = True          # hand off control to docking loop
+            self.angular_integral = 0.0
         else:
-            self.get_logger().warn(f'Navigation goal finished with status={result.status}.')
+            self.get_logger().warn(f'Nav2 goal failed with status={result.status}.')
         self.goal_active = False
 
+    def run_docking(self, tvec, rvec):
+        """
+        Called from image_callback when self.docking is True.
+        Controls robot directly using camera-frame ArUco pose.
+        tvec: [x, y, z] in camera optical frame (z = forward depth)
+        """
+        depth   = tvec[2]          # distance to marker (metres)
+        lateral = tvec[0]          # left/right offset (metres)
+
+        # --- Angular error: centre the marker horizontally ---
+        # In optical frame x-right, so positive lateral = marker is to the right
+        angular_error = -lateral   # we want lateral → 0
+
+        self.angular_integral += angular_error * 0.05  # dt ≈ 50ms at 20Hz
+        self.angular_integral = float(np.clip(self.angular_integral, -0.3, 0.3))
+
+        angular_cmd = self.kp_angular * angular_error + self.ki_angular * self.angular_integral
+
+        # --- Linear error: drive until dock_target_distance ---
+        linear_error = depth - self.dock_target_distance
+        linear_cmd = self.kp_linear * linear_error
+
+        # Safety clamps
+        linear_cmd  = float(np.clip(linear_cmd,  -0.08, 0.12))
+        angular_cmd = float(np.clip(angular_cmd, -0.4,  0.4))
+
+        # Stop condition
+        if abs(linear_error) < 0.02 and abs(lateral) < 0.03:
+            self.get_logger().info(f'Docked! depth={depth:.3f}m lateral={lateral:.3f}m')
+            self.stop_robot()
+            self.docking = False
+            return
+
+        twist = Twist()
+        twist.linear.x  = linear_cmd
+        twist.angular.z = angular_cmd
+        self.cmd_vel_pub.publish(twist)
+
+    def stop_robot(self):
+        self.cmd_vel_pub.publish(Twist())  # zero twist = stop
 
 def main(args=None):
     rclpy.init(args=args)
