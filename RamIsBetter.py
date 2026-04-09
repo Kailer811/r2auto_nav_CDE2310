@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 import cv2
@@ -12,8 +12,6 @@ import numpy as np
 import tf2_ros
 import math
 from tf2_ros import TransformException
-from geometry_msgs.msg import Twist
-
 
 
 DEFAULT_CAMERA_FRAMES = [
@@ -51,9 +49,24 @@ class RamIsBetter(Node):
         self.active_source_frame = None
         self.last_tf_warn_time = 0.0
         self.standoff_distance = float(self.declare_parameter('standoff_distance', 0.35).value)
-        
+        self.visual_takeover_distance = float(
+            self.declare_parameter('visual_takeover_distance', 0.45).value)
+        self.final_distance = float(self.declare_parameter('final_distance', 0.05).value)
+        self.linear_gain = float(self.declare_parameter('linear_gain', 0.6).value)
+        self.angular_gain_x = float(self.declare_parameter('angular_gain_x', 2.5).value)
+        self.angular_gain_yaw = float(self.declare_parameter('angular_gain_yaw', 1.5).value)
+        self.max_linear_speed = float(self.declare_parameter('max_linear_speed', 0.12).value)
+        self.max_angular_speed = float(self.declare_parameter('max_angular_speed', 0.9).value)
+        self.goal_update_distance = float(self.declare_parameter('goal_update_distance', 0.08).value)
+        self.goal_update_yaw = float(self.declare_parameter('goal_update_yaw', 0.2).value)
+        self.show_debug_window = bool(self.declare_parameter('show_debug_window', False).value)
+        self.align_x_threshold = float(self.declare_parameter('align_x_threshold', 0.01).value)
+        self.align_yaw_threshold = float(self.declare_parameter('align_yaw_threshold', 0.08).value)
+        self.distance_threshold = float(self.declare_parameter('distance_threshold', 0.01).value)
+
         # Navigation client
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         
         # Subscribe to compressed camera images
         self.subscription = self.create_subscription(
@@ -65,16 +78,9 @@ class RamIsBetter(Node):
         # State variables
         self.locked_id = None
         self.goal_active = False
-
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.docking = False
-        self.dock_target_distance = 0.15  # how close to stop (metres)
-
-        # PID gains — tune these
-        self.kp_linear = 0.4
-        self.kp_angular = 0.6
-        self.ki_angular = 0.01
-        self.angular_integral = 0.0
+        self.goal_handle = None
+        self.mode = 'search'
+        self.last_goal_pose = None
         
         self.get_logger().info("RamIsBetter node initialized. Ready to detect ArUco markers and navigate towards them!")
 
@@ -96,8 +102,9 @@ class RamIsBetter(Node):
                 distances = [tvecs[i][0][2] for i in range(len(ids))]
                 target_index = np.argmin(distances)
                 
-                marker_id = ids[target_index][0]
+                marker_id = int(ids[target_index][0])
                 tvec = tvecs[target_index][0]  # Translation vector in camera frame
+                rvec = rvecs[target_index][0]
                 
                 # Lock on to the first detected marker
                 if self.locked_id is None:
@@ -105,28 +112,29 @@ class RamIsBetter(Node):
                     self.get_logger().info(f"Locked on to ArUco marker ID: {marker_id}")
                 
                 if marker_id == self.locked_id:
-                    # Transform marker position from camera frame to map frame
-                    marker_pose_map = self.transform_marker_to_map(tvec)
-                    if self.docking:
-                        # Precise docking: use raw camera-frame tvec directly
-                        self.run_docking(tvec, rvecs[target_index][0])
-                    else:
-                        # Coarse Nav2 phase
+                    distance_to_marker = float(tvec[2])
+                    if distance_to_marker > self.visual_takeover_distance:
                         marker_pose_map = self.transform_marker_to_map(tvec)
+
                         if marker_pose_map is not None:
                             target_pose = self.calculate_target_pose(marker_pose_map)
+                            self.mode = 'nav2'
                             self.send_navigation_goal(target_pose)
-                else:
-                    if self.locked_id is not None:
-                        self.get_logger().info("Marker lost. Resetting.")
-                        if self.docking:
-                            self.stop_robot()   # don't drive blind
-                            self.docking = False
-                        self.locked_id = None
-                        self.active_source_frame = None
-                    
+                            self.get_logger().info(
+                                f"Nav2 approach to ArUco ID {marker_id} at x={target_pose.pose.position.x:.2f}, y={target_pose.pose.position.y:.2f}")
+                        else:
+                            self.get_logger().warn("Could not transform marker position to map frame")
+                    else:
+                        if self.mode != 'visual':
+                            self.get_logger().info(
+                                f'Switching to visual alignment for ArUco ID {marker_id}.')
+                        self.mode = 'visual'
+                        self.cancel_navigation_goal()
+                        self.visual_servo_to_marker(tvec, rvec)
+                
                 # Draw detected markers for visualization
                 cv2.aruco.drawDetectedMarkers(frame, corners)
+                cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[target_index], tvecs[target_index], 0.05)
                 
             else:
                 # No markers detected, reset lock
@@ -134,10 +142,13 @@ class RamIsBetter(Node):
                     self.get_logger().info("ArUco marker lost. Resetting lock.")
                     self.locked_id = None
                     self.active_source_frame = None
+                    self.mode = 'search'
+                    self.stop_robot()
             
             # Display the frame (optional, for debugging)
-            cv2.imshow("RamIsBetter - ArUco Detection", frame)
-            cv2.waitKey(1)
+            if self.show_debug_window:
+                cv2.imshow("RamIsBetter - ArUco Detection", frame)
+                cv2.waitKey(1)
             
         except Exception as e:
             self.get_logger().error(f"Error in image callback: {e}")
@@ -206,6 +217,12 @@ class RamIsBetter(Node):
             transform.transform.translation.z,
         ], dtype=float)
 
+    def rotation_matrix_to_yaw(self, rotation_matrix):
+        return math.atan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
+
+    def normalize_angle(self, angle):
+        return math.atan2(math.sin(angle), math.cos(angle))
+
     def quaternion_to_rotation_matrix(self, quaternion):
         """
         Convert quaternion to rotation matrix.
@@ -248,6 +265,40 @@ class RamIsBetter(Node):
 
         return pose
 
+    def marker_heading_error(self, rvec):
+        rotation_matrix, _ = cv2.Rodrigues(np.array(rvec, dtype=float))
+        marker_normal = rotation_matrix[:, 2]
+        return math.atan2(float(marker_normal[0]), abs(float(marker_normal[2])) + 1e-6)
+
+    def visual_servo_to_marker(self, tvec, rvec):
+        x_error = float(tvec[0])
+        distance_error = float(tvec[2] - self.final_distance)
+        yaw_error = self.marker_heading_error(rvec)
+
+        aligned = (
+            abs(x_error) <= self.align_x_threshold
+            and abs(yaw_error) <= self.align_yaw_threshold
+            and abs(distance_error) <= self.distance_threshold
+        )
+        if aligned:
+            self.stop_robot()
+            self.get_logger().info(
+                f'Aligned with ArUco ID {self.locked_id}: x={x_error:.3f}, z={tvec[2]:.3f}, yaw_err={yaw_error:.3f}')
+            return
+
+        cmd = Twist()
+        cmd.linear.x = self.linear_gain * distance_error
+        cmd.angular.z = -(self.angular_gain_x * x_error + self.angular_gain_yaw * yaw_error)
+
+        if abs(x_error) > 0.03 or abs(yaw_error) > 0.12:
+            cmd.linear.x = min(cmd.linear.x, 0.04)
+
+        cmd.linear.x = max(min(cmd.linear.x, self.max_linear_speed), -self.max_linear_speed)
+        cmd.angular.z = max(min(cmd.angular.z, self.max_angular_speed), -self.max_angular_speed)
+        self.cmd_vel_pub.publish(cmd)
+        self.get_logger().info(
+            f'Visual align ID {self.locked_id}: x_err={x_error:.3f}, z={tvec[2]:.3f}, dist_err={distance_error:.3f}, yaw_err={yaw_error:.3f}')
+
     def send_navigation_goal(self, pose):
         """
         Send a navigation goal to Nav2.
@@ -256,9 +307,16 @@ class RamIsBetter(Node):
             self.get_logger().error('Nav2 action server not available.')
             return
         
-        if self.goal_active:
-            self.get_logger().info("Navigation goal already active, skipping new goal.")
-            return
+        if self.goal_active and self.last_goal_pose is not None:
+            last_x, last_y, last_yaw = self.last_goal_pose
+            next_x = pose.pose.position.x
+            next_y = pose.pose.position.y
+            next_yaw = 2.0 * math.atan2(pose.pose.orientation.z, pose.pose.orientation.w)
+            move_delta = math.hypot(next_x - last_x, next_y - last_y)
+            yaw_delta = abs(self.normalize_angle(next_yaw - last_yaw))
+            if move_delta < self.goal_update_distance and yaw_delta < self.goal_update_yaw:
+                return
+            self.cancel_navigation_goal()
         
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose = pose
@@ -268,14 +326,21 @@ class RamIsBetter(Node):
         send_future = self.nav_client.send_goal_async(goal_msg)
         send_future.add_done_callback(self.goal_response_callback)
         self.goal_active = True
+        self.last_goal_pose = (
+            pose.pose.position.x,
+            pose.pose.position.y,
+            2.0 * math.atan2(pose.pose.orientation.z, pose.pose.orientation.w),
+        )
 
     def goal_response_callback(self, future):
         goal_handle = future.result()
         if goal_handle is None or not goal_handle.accepted:
             self.get_logger().warn('Navigation goal rejected.')
             self.goal_active = False
+            self.goal_handle = None
             return
         
+        self.goal_handle = goal_handle
         self.get_logger().info('Navigation goal accepted.')
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self.goal_result_callback)
@@ -283,53 +348,21 @@ class RamIsBetter(Node):
     def goal_result_callback(self, future):
         result = future.result()
         if result.status == 4:  # SUCCEEDED
-            self.get_logger().info('Nav2 done. Starting precise docking...')
-            self.docking = True          # hand off control to docking loop
-            self.angular_integral = 0.0
+            self.get_logger().info('Navigation goal reached successfully!')
         else:
-            self.get_logger().warn(f'Nav2 goal failed with status={result.status}.')
+            self.get_logger().warn(f'Navigation goal finished with status={result.status}.')
+        self.goal_active = False
+        self.goal_handle = None
+
+    def cancel_navigation_goal(self):
+        if self.goal_handle is not None:
+            self.goal_handle.cancel_goal_async()
+            self.goal_handle = None
         self.goal_active = False
 
-    def run_docking(self, tvec, rvec):
-        """
-        Called from image_callback when self.docking is True.
-        Controls robot directly using camera-frame ArUco pose.
-        tvec: [x, y, z] in camera optical frame (z = forward depth)
-        """
-        depth   = tvec[2]          # distance to marker (metres)
-        lateral = tvec[0]          # left/right offset (metres)
-
-        # --- Angular error: centre the marker horizontally ---
-        # In optical frame x-right, so positive lateral = marker is to the right
-        angular_error = -lateral   # we want lateral → 0
-
-        self.angular_integral += angular_error * 0.05  # dt ≈ 50ms at 20Hz
-        self.angular_integral = float(np.clip(self.angular_integral, -0.3, 0.3))
-
-        angular_cmd = self.kp_angular * angular_error + self.ki_angular * self.angular_integral
-
-        # --- Linear error: drive until dock_target_distance ---
-        linear_error = depth - self.dock_target_distance
-        linear_cmd = self.kp_linear * linear_error
-
-        # Safety clamps
-        linear_cmd  = float(np.clip(linear_cmd,  -0.08, 0.12))
-        angular_cmd = float(np.clip(angular_cmd, -0.4,  0.4))
-
-        # Stop condition
-        if abs(linear_error) < 0.02 and abs(lateral) < 0.03:
-            self.get_logger().info(f'Docked! depth={depth:.3f}m lateral={lateral:.3f}m')
-            self.stop_robot()
-            self.docking = False
-            return
-
-        twist = Twist()
-        twist.linear.x  = linear_cmd
-        twist.angular.z = angular_cmd
-        self.cmd_vel_pub.publish(twist)
-
     def stop_robot(self):
-        self.cmd_vel_pub.publish(Twist())  # zero twist = stop
+        self.cmd_vel_pub.publish(Twist())
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -339,9 +372,11 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        node.stop_robot()
         node.destroy_node()
         rclpy.shutdown()
-        cv2.destroyAllWindows()
+        if node.show_debug_window:
+            cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
