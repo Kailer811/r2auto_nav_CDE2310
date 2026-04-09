@@ -55,6 +55,9 @@ ARUCO_LINEAR_GAIN = 0.3
 ARUCO_MAX_LINEAR_SPEED = 0.22
 ARUCO_MAX_ANGULAR_SPEED = 1.5
 ARUCO_APPROACH_MIN_DISTANCE = 0.2
+ARUCO_SEARCH_TIMEOUT = 6.0
+ARUCO_SEARCH_SPEED = 0.8
+ARUCO_SEARCH_DIRECTION_SWITCH_PERIOD = 1.5
 
 # ── coverage constants ────────────────────────────────────────────────────
 # how many pooled cells around the robot count as "visited" each step
@@ -285,6 +288,9 @@ class AutoNav(Node):
         self.aruco_active = False
         self.aruco_last_seen_time = 0.0
         self.cancel_goal_when_accepted = False
+        self.aruco_search_active = False
+        self.aruco_search_started_at = 0.0
+        self.aruco_search_direction = 1.0
 
         # subscribe
         self.create_subscription(
@@ -647,6 +653,14 @@ class AutoNav(Node):
             candidates.append((float(tvecs[index][0][2]), index))
         if not candidates:
             return None
+        if self.locked_id is not None:
+            locked_candidates = [
+                item for item in candidates
+                if int(ids[item[1]][0]) == self.locked_id
+            ]
+            if locked_candidates:
+                locked_candidates.sort(key=lambda item: item[0])
+                return locked_candidates[0][1]
         candidates.sort(key=lambda item: item[0])
         return candidates[0][1]
 
@@ -654,6 +668,51 @@ class AutoNav(Node):
         self.aruco_active = False
         self.locked_id = None
         self.cancel_goal_when_accepted = False
+        self.aruco_search_active = False
+        self.aruco_search_started_at = 0.0
+        self.aruco_search_direction = 1.0
+
+    def start_aruco_search(self):
+        if self.locked_id is None:
+            self.reset_aruco_tracking()
+            return
+        if not self.aruco_search_active:
+            self.aruco_search_active = True
+            self.aruco_search_started_at = time.time()
+            self.aruco_search_direction = 1.0
+            self.get_logger().warn(
+                f'ArUco ID {int(self.locked_id)} lost. Starting recovery search.')
+
+    def publish_aruco_search_cmd(self):
+        if not self.aruco_search_active:
+            return
+
+        elapsed = time.time() - self.aruco_search_started_at
+        sweep_count = int(
+            elapsed / ARUCO_SEARCH_DIRECTION_SWITCH_PERIOD) if ARUCO_SEARCH_DIRECTION_SWITCH_PERIOD > 0.0 else 0
+        self.aruco_search_direction = 1.0 if sweep_count % 2 == 0 else -1.0
+
+        cmd = Twist()
+        cmd.angular.z = self.aruco_search_direction * ARUCO_SEARCH_SPEED
+        cmd.angular.z = max(min(cmd.angular.z, ARUCO_MAX_ANGULAR_SPEED), -ARUCO_MAX_ANGULAR_SPEED)
+        self.cmd_vel_pub.publish(cmd)
+
+    def update_aruco_search(self):
+        if not self.aruco_search_active:
+            return
+
+        elapsed = time.time() - self.aruco_search_started_at
+        if elapsed >= ARUCO_SEARCH_TIMEOUT:
+            lost_marker_id = self.locked_id
+            if lost_marker_id is not None:
+                self.triggered_marker_ids.discard(lost_marker_id)
+            self.stop_robot()
+            self.reset_aruco_tracking()
+            self.get_logger().info(
+                f'ArUco search timed out after {elapsed:.1f}s. Returning control to Nav2 exploration.')
+            return
+
+        self.publish_aruco_search_cmd()
 
     def trigger_marker_action(self, marker_id):
         if marker_id in self.triggered_marker_ids:
@@ -911,7 +970,7 @@ class AutoNav(Node):
         if not self.system_ready:
             return
         
-        if self.aruco_active:
+        if self.aruco_active or self.aruco_search_active:
             return
 
         front = self.front_clearance()
@@ -963,7 +1022,9 @@ class AutoNav(Node):
 
                 target_index = self.choose_detected_marker(ids, tvecs)
                 if target_index is None:
-                    if self.aruco_active:
+                    if self.aruco_search_active:
+                        self.update_aruco_search()
+                    elif self.aruco_active:
                         self.stop_robot()
                     return
 
@@ -971,6 +1032,7 @@ class AutoNav(Node):
                     self.get_logger().info(
                         'ArUco marker detected. Switching control from Nav2 to visual follow.')
                 self.aruco_active = True
+                self.aruco_search_active = False
                 self.aruco_last_seen_time = time.time()
                 self.cancel_active_goal(
                     'ArUco marker detected - switching to visual follow',
@@ -1002,13 +1064,14 @@ class AutoNav(Node):
             else:
                 if self.aruco_active:
                     time_since_seen = time.time() - self.aruco_last_seen_time
-                    self.stop_robot()
                     if time_since_seen >= ARUCO_LOST_TIMEOUT:
-                        if self.locked_id is not None:
-                            self.triggered_marker_ids.discard(self.locked_id)
-                        self.reset_aruco_tracking()
-                        self.get_logger().info(
-                            'ArUco marker lost. Returning control to Nav2 exploration.')
+                        self.aruco_active = False
+                        self.start_aruco_search()
+                        self.update_aruco_search()
+                    else:
+                        self.stop_robot()
+                elif self.aruco_search_active:
+                    self.update_aruco_search()
 
             if self.show_debug_window:
                 cv2.imshow("Compressed RPi Stream", frame)

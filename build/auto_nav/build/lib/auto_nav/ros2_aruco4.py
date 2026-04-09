@@ -2,9 +2,12 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage # Changed from Image
 from cv_bridge import CvBridge
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PointStamped
 import cv2
 import numpy as np
+import tf2_ros
+from tf2_ros import TransformException
+import tf2_geometry_msgs
 
 class ArucoFollowerCompressed(Node):
     def __init__(self):
@@ -39,6 +42,9 @@ class ArucoFollowerCompressed(Node):
         }
         self.locked_id = None
 
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
         self.get_logger().info("🚀 Subscribed to COMPRESSED stream. Smoothing out the lag!")
 
     def image_callback(self, msg):
@@ -51,72 +57,53 @@ class ArucoFollowerCompressed(Node):
             cmd = Twist()
 
             if ids is not None:
+                self.get_logger().info("aruco found")
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
-                # --- PICK TARGET (closest marker) ---
+
                 distances = [tvecs[i][0][2] for i in range(len(ids))]
                 target_index = np.argmin(distances)
-
                 marker_id = ids[target_index][0]
-                x = tvecs[target_index][0][0]
-                z = tvecs[target_index][0][2]
-
-                # --- LOCK ON (prevents switching) ---
+                
                 if self.locked_id is None:
                     self.locked_id = marker_id
 
                 if marker_id != self.locked_id:
                     return  # ignore others
+                try:
+                    p_cam = PointStamped()
+                    p_cam.header.frame_id = "camera_optical_frame"   # ⚠️ adjust if needed
+                    p_cam.header.stamp = rclpy.time.Time().to_msg()
 
-                # --- ERRORS ---
-                error_x = x - self.target_x
-                error_z = z - self.target_distance
+                    # OpenCV tvec (camera frame)
+                    p_cam.point.x = float(tvecs[target_index][0][0])
+                    p_cam.point.y = float(tvecs[target_index][0][1])
+                    p_cam.point.z = float(tvecs[target_index][0][2])
 
-                # thresholds
-                align_thresh = 0.03
-                dist_thresh = 0.03
+                    # Transform to map frame
+                    p_map = self.tf_buffer.transform(
+                        p_cam,
+                        "map",
+                        timeout=rclpy.duration.Duration(seconds=0.2)
+                    )
 
-                # gains
-                k_ang = 1.2
-                k_lin = 0.3
+                    goal_x = p_map.point.x
+                    goal_y = p_map.point.y
 
-                # --- DOCKING STATE MACHINE ---
-                if abs(error_z) > dist_thresh:
-                    # Phase 2: approach
-                    cmd.linear.x = k_lin * error_z
-                    cmd.angular.z = -k_ang * error_x
-                
-                elif abs(error_x) > align_thresh and z > 0.2:
-                    # Phase 1: rotate
-                    cmd.angular.z = -k_ang * error_x
-                    cmd.linear.x = 0.0
+                    self.get_logger().info(
+                        f"MAP GOAL → x={goal_x:.2f}, y={goal_y:.2f}"
+                    )
 
+                except TransformException as e:
+                    self.get_logger().warn(f"TF transform failed: {e}")
+                    return
+               
 
-                else:
-                    # --- DOCKED ---
-                    cmd.linear.x = 0.0
-                    cmd.angular.z = 0.0
-
-                    action = self.marker_actions.get(marker_id, "none")
-
-                    if action == "fire":
-                        self.get_logger().info("🔥 FIRE ACTION")
-                        # trigger actuator here
-
-                    elif action == "stop":
-                        self.get_logger().info("🛑 STOPPED")
-
-                    elif action == "scan":
-                        self.get_logger().info("🔍 SCANNING")
-
-                # clamp speeds
-                cmd.linear.x = max(min(cmd.linear.x, 0.22), -0.22)
-                cmd.angular.z = max(min(cmd.angular.z, 1.5), -1.5)
 
                 self.cmd_pub.publish(cmd)
 
                 self.get_logger().info(
-                    f"[ID {marker_id}] X={x:.2f}, Z={z:.2f}"
+                    f"[ID {marker_id}] y_map={goal_x:.2f}, y_map={goal_y:.2f}"
                 )
             else:
                 # LOST MARKER → STOP + RESET LOCK

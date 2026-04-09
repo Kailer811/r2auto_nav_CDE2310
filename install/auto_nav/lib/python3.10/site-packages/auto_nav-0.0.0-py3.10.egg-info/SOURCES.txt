@@ -12,7 +12,11 @@ setup.py
 ./r2occupancy2.py
 ./r2scanner.py
 ./ros2_aruco.py
+./ros2_aruco2.py
+./ros2_aruco3.py
+./ros2_aruco4.py
 ./ros2_camera.py
+./ros2_camera2.py
 ./ros2_nav.py
 ./ros2_nav_aruco.py
 ./servo_motor_run.py
