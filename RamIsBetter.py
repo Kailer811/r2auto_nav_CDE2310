@@ -13,7 +13,6 @@ import tf2_ros
 import math
 from tf2_ros import TransformException
 from std_msgs.msg import Bool
-from trigger_gpio import trigger_gpio
 
 
 
@@ -63,13 +62,14 @@ class RamIsBetter(Node):
         self.goal_update_distance = float(self.declare_parameter('goal_update_distance', 0.08).value)
         self.goal_update_yaw = float(self.declare_parameter('goal_update_yaw', 0.2).value)
         self.show_debug_window = bool(self.declare_parameter('show_debug_window', False).value)
-        self.align_x_threshold = float(self.declare_parameter('align_x_threshold', 0.01).value)
-        self.align_yaw_threshold = float(self.declare_parameter('align_yaw_threshold', 0.08).value)
-        self.distance_threshold = float(self.declare_parameter('distance_threshold', 0.01).value)
+        self.align_x_threshold = float(self.declare_parameter('align_x_threshold', 0.5).value)
+        self.align_yaw_threshold = float(self.declare_parameter('align_yaw_threshold', 0.5).value)
+        self.distance_threshold = float(self.declare_parameter('distance_threshold', 0.5).value)
 
         # Navigation client
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.objA_trigger_pub = self.create_publisher(Bool, '/trigger_objA', 10)
         
         # Subscribe to compressed camera images
         self.subscription = self.create_subscription(
@@ -84,7 +84,7 @@ class RamIsBetter(Node):
         self.goal_handle = None
         self.mode = 'search'
         self.last_goal_pose = None
-        self.objA = False
+        #self.objA = False
 
         self.aruco_detected_pub = self.create_publisher(
             Bool,
@@ -103,7 +103,7 @@ class RamIsBetter(Node):
             corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
             
             if ids is not None:
-                if not self.objA:
+                #if not self.objA:
                     msg = Bool()
                     msg.data = True
                     self.aruco_detected_pub.publish(msg)
@@ -149,8 +149,8 @@ class RamIsBetter(Node):
                     # Draw detected markers for visualization
                     cv2.aruco.drawDetectedMarkers(frame, corners)
                     cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[target_index], tvecs[target_index], 0.05)
-                else:
-                    self.get_logger().info("obj has been done alread")
+                #else:
+                    #self.get_logger().info("obj has been done alread")
                 
             else:
                 # No markers detected, reset lock
@@ -303,7 +303,11 @@ class RamIsBetter(Node):
             self.get_logger().info(
                 f'Aligned with ArUco ID {self.locked_id}: x={x_error:.3f}, z={tvec[2]:.3f}, yaw_err={yaw_error:.3f}')
 
-            #TODO: activate gpio node 
+            #TODO: activate gpio node
+            trigger_msg = Bool()
+            trigger_msg.data = True
+            self.objA_trigger_pub.publish(trigger_msg)
+            #self.objA = True   
             return
 
         cmd = Twist()
