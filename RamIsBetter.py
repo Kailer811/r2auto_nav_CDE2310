@@ -86,7 +86,10 @@ class RamIsBetter(Node):
         self.last_goal_pose = None
         self.objA = False
 
-        self.aruco_detected_pub = self.create_publisher(Bool, '/aruco_detected', 10)
+        self.aruco_detected_pub = self.create_publisher(
+            Bool,
+            '/aruco_detected',
+            10)
         
         self.get_logger().info("RamIsBetter node initialized. Ready to detect ArUco markers and navigate towards them!")
 

@@ -29,10 +29,11 @@ setup(
             'r2auto_nav = auto_nav.r2auto_nav:main',
 	    'auto_nav2 = auto_nav.auto_nav2:main',
 	    'auto_nav_draft = auto_nav.auto_nav_draft:main',
-	    'aruco_node = auto_nav.aruco_node:main',
+            'aruco_node = auto_nav.aruco_node:main',
             'ros2_nav_aruco = auto_nav.ros2_nav_aruco:main',
             'nav2_go_to_pose = auto_nav.nav2_go_to_pose:main',
             'RamIsBetter = auto_nav.RamIsBetter:main',
+            'aruco_precision_dock = auto_nav.aruco_precision_dock:main',
         ],
     },
 )
