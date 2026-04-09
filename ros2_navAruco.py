@@ -16,14 +16,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profi
 from sensor_msgs.msg import LaserScan
 import tf2_ros
 from tf2_ros import TransformException
-from sensor_msgs.msg import CompressedImage
-from cv_bridge import CvBridge
-import cv2
+from std_msgs.msg import Bool
 
-try:
-    import RPi.GPIO as GPIO
-except ImportError:
-    GPIO = None
 
 
 # ── existing constants ────────────────────────────────────────────────────
@@ -47,17 +41,6 @@ FRONT_STOP_DISTANCE = 0.24
 BLOCKED_RECOVERY_WAIT = 2.5
 BACKUP_DURATION = 1.2
 BACKUP_SPEED = -0.08
-ARUCO_LOST_TIMEOUT = 0.6
-ARUCO_ALIGN_THRESHOLD = 0.03
-ARUCO_DISTANCE_THRESHOLD = 0.05
-ARUCO_ANGULAR_GAIN = 1.2
-ARUCO_LINEAR_GAIN = 0.3
-ARUCO_MAX_LINEAR_SPEED = 0.22
-ARUCO_MAX_ANGULAR_SPEED = 1.5
-ARUCO_APPROACH_MIN_DISTANCE = 0.2
-ARUCO_SEARCH_TIMEOUT = 6.0
-ARUCO_SEARCH_SPEED = 0.8
-ARUCO_SEARCH_DIRECTION_SWITCH_PERIOD = 1.5
 
 # ── coverage constants ────────────────────────────────────────────────────
 # how many pooled cells around the robot count as "visited" each step
@@ -72,80 +55,6 @@ EIGHT_CONNECTED_NEIGHBORS = [
     (-1, 0), (1, 0), (0, -1), (0, 1),
     (-1, -1), (-1, 1), (1, -1), (1, 1),
 ]
-
-
-class ServoTrigger:
-    def __init__(self, node):
-        self.node = node
-        self.pin = int(node.declare_parameter('servo_gpio_pin', -1).value)
-        self.trigger_duration = float(
-            node.declare_parameter('servo_trigger_duration', 0.8).value)
-        self.use_pwm = bool(node.declare_parameter('servo_use_pwm', True).value)
-        self.pwm_frequency = float(
-            node.declare_parameter('servo_pwm_frequency', 50.0).value)
-        self.active_duty = float(
-            node.declare_parameter('servo_active_duty_cycle', 7.5).value)
-        self.idle_duty = float(
-            node.declare_parameter('servo_idle_duty_cycle', 0.0).value)
-
-        self.gpio_ready = False
-        self.pwm = None
-
-        if GPIO is None:
-            node.get_logger().warn(
-                'RPi.GPIO is not available. Servo trigger will run in log-only placeholder mode.')
-            return
-
-        if self.pin < 0:
-            node.get_logger().warn(
-                'Parameter servo_gpio_pin is not set. Servo trigger will stay in placeholder mode.')
-            return
-
-        try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.pin, GPIO.OUT)
-            GPIO.output(self.pin, GPIO.LOW)
-            if self.use_pwm:
-                self.pwm = GPIO.PWM(self.pin, self.pwm_frequency)
-                self.pwm.start(self.idle_duty)
-            self.gpio_ready = True
-            node.get_logger().info(f'Servo trigger ready on BCM GPIO {self.pin}.')
-        except Exception as exc:
-            node.get_logger().error(f'Failed to initialize servo GPIO: {exc}')
-            self.gpio_ready = False
-
-    def trigger(self):
-        if not self.gpio_ready:
-            self.node.get_logger().warn(
-                'Servo trigger requested, but hardware is in placeholder mode.')
-            return
-
-        try:
-            if self.use_pwm and self.pwm is not None:
-                self.pwm.ChangeDutyCycle(self.active_duty)
-                time.sleep(self.trigger_duration)
-                self.pwm.ChangeDutyCycle(self.idle_duty)
-            else:
-                GPIO.output(self.pin, GPIO.HIGH)
-                time.sleep(self.trigger_duration)
-                GPIO.output(self.pin, GPIO.LOW)
-        except Exception as exc:
-            self.node.get_logger().error(f'Servo trigger failed: {exc}')
-
-    def shutdown(self):
-        if GPIO is None:
-            return
-        try:
-            if self.pwm is not None:
-                self.pwm.ChangeDutyCycle(self.idle_duty)
-                self.pwm.stop()
-            if self.gpio_ready:
-                GPIO.output(self.pin, GPIO.LOW)
-        except Exception:
-            pass
-        finally:
-            if self.gpio_ready:
-                GPIO.cleanup(self.pin)
 
 
 def euler_from_quaternion(x, y, z, w):
@@ -259,6 +168,9 @@ class AutoNav(Node):
 
         self.create_timer(PLANNER_PERIOD, self.exploration_step)
 
+
+        self.aruco_detected = False
+
         # --- ArUco ---
         self.bridge = CvBridge()
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
@@ -294,9 +206,9 @@ class AutoNav(Node):
 
         # subscribe
         self.create_subscription(
-            CompressedImage,
-            '/image_raw/compressed',
-            self.image_callback,
+            Bool,
+            '/aruco_detected',
+            self.aruco_callback,
             10
         )
 
@@ -319,6 +231,18 @@ class AutoNav(Node):
         angles = msg.angle_min + np.arange(len(ranges), dtype=float) * msg.angle_increment
         self.scan_ranges = ranges
         self.scan_angles = np.mod(angles, 2.0 * math.pi)
+
+    def aruco_callback(self, msg):
+        self.aruco_detected = msg.data
+
+        if self.aruco_detected:
+            self.get_logger().info("Aruco detected! Stopping exploration.")
+            self.cancel_navigation_goal()
+            self.stop_robot()
+
+    def cancel_navigation_goal(self):
+        if self.goal_handle:
+            self.goal_handle.cancel_goal_async()
 
     # ── startup ───────────────────────────────────────────────────────────
 
@@ -902,13 +826,6 @@ class AutoNav(Node):
             return
         self.goal_handle = goal_handle
         self.front_blocked_since = None
-        if self.cancel_goal_when_accepted or self.aruco_active:
-            self.cancel_goal_when_accepted = False
-            self.cancel_active_goal(
-                'goal accepted while ArUco control is active',
-                block_current_goal=False,
-            )
-            return
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self.goal_result_callback)
 
@@ -944,13 +861,11 @@ class AutoNav(Node):
             self.last_progress_time = time.time()
             self.front_blocked_since = None
 
-    def cancel_active_goal(self, reason, block_current_goal=True):
+    def cancel_active_goal(self, reason):
         if self.goal_handle is None:
-            if self.goal_in_flight:
-                self.cancel_goal_when_accepted = True
             return
         self.get_logger().warn(f'Cancelling goal: {reason}')
-        if block_current_goal and self.current_goal_cell is not None:
+        if self.current_goal_cell is not None:
             self.mark_goal_region_blocked(self.current_goal_cell)
         self.goal_handle.cancel_goal_async()
         self.goal_handle = None
@@ -967,6 +882,8 @@ class AutoNav(Node):
     # ── main timer ────────────────────────────────────────────────────────
 
     def exploration_step(self):
+        if self.aruco_detected:
+            return
         if not self.system_ready:
             return
         
@@ -1090,11 +1007,7 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.')
     finally:
-        node.stop_robot()
-        node.servo_trigger.shutdown()
         node.destroy_node()
-        if node.show_debug_window:
-            cv2.destroyAllWindows()
         rclpy.shutdown()
 
 
