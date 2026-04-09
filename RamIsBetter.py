@@ -13,6 +13,7 @@ import tf2_ros
 import math
 from tf2_ros import TransformException
 from std_msgs.msg import Bool
+from trigger_gpio import trigger_gpio
 
 
 
@@ -83,6 +84,7 @@ class RamIsBetter(Node):
         self.goal_handle = None
         self.mode = 'search'
         self.last_goal_pose = None
+        self.objA = False
 
         self.aruco_detected_pub = self.create_publisher(Bool, '/aruco_detected', 10)
         
@@ -98,51 +100,54 @@ class RamIsBetter(Node):
             corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
             
             if ids is not None:
-                msg = Bool()
-                msg.data = True
-                self.aruco_detected_pub.publish(msg)
+                if not self.objA:
+                    msg = Bool()
+                    msg.data = True
+                    self.aruco_detected_pub.publish(msg)
 
-                # Estimate pose of markers
-                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-                    corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
-                
-                # Find the closest marker
-                distances = [tvecs[i][0][2] for i in range(len(ids))]
-                target_index = np.argmin(distances)
-                
-                marker_id = int(ids[target_index][0])
-                tvec = tvecs[target_index][0]  # Translation vector in camera frame
-                rvec = rvecs[target_index][0]
-                
-                # Lock on to the first detected marker
-                if self.locked_id is None:
-                    self.locked_id = marker_id
-                    self.get_logger().info(f"Locked on to ArUco marker ID: {marker_id}")
-                
-                if marker_id == self.locked_id:
-                    distance_to_marker = float(tvec[2])
-                    if distance_to_marker > self.visual_takeover_distance:
-                        marker_pose_map = self.transform_marker_to_map(tvec)
+                    # Estimate pose of markers
+                    rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                        corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
+                    
+                    # Find the closest marker
+                    distances = [tvecs[i][0][2] for i in range(len(ids))]
+                    target_index = np.argmin(distances)
+                    
+                    marker_id = int(ids[target_index][0])
+                    tvec = tvecs[target_index][0]  # Translation vector in camera frame
+                    rvec = rvecs[target_index][0]
+                    
+                    # Lock on to the first detected marker
+                    if self.locked_id is None:
+                        self.locked_id = marker_id
+                        self.get_logger().info(f"Locked on to ArUco marker ID: {marker_id}")
+                    
+                    if marker_id == self.locked_id:
+                        distance_to_marker = float(tvec[2])
+                        if distance_to_marker > self.visual_takeover_distance:
+                            marker_pose_map = self.transform_marker_to_map(tvec)
 
-                        if marker_pose_map is not None:
-                            target_pose = self.calculate_target_pose(marker_pose_map)
-                            self.mode = 'nav2'
-                            self.send_navigation_goal(target_pose)
-                            self.get_logger().info(
-                                f"Nav2 approach to ArUco ID {marker_id} at x={target_pose.pose.position.x:.2f}, y={target_pose.pose.position.y:.2f}")
+                            if marker_pose_map is not None:
+                                target_pose = self.calculate_target_pose(marker_pose_map)
+                                self.mode = 'nav2'
+                                self.send_navigation_goal(target_pose)
+                                self.get_logger().info(
+                                    f"Nav2 approach to ArUco ID {marker_id} at x={target_pose.pose.position.x:.2f}, y={target_pose.pose.position.y:.2f}")
+                            else:
+                                self.get_logger().warn("Could not transform marker position to map frame")
                         else:
-                            self.get_logger().warn("Could not transform marker position to map frame")
-                    else:
-                        if self.mode != 'visual':
-                            self.get_logger().info(
-                                f'Switching to visual alignment for ArUco ID {marker_id}.')
-                        self.mode = 'visual'
-                        self.cancel_navigation_goal()
-                        self.visual_servo_to_marker(tvec, rvec)
-                
-                # Draw detected markers for visualization
-                cv2.aruco.drawDetectedMarkers(frame, corners)
-                cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[target_index], tvecs[target_index], 0.05)
+                            if self.mode != 'visual':
+                                self.get_logger().info(
+                                    f'Switching to visual alignment for ArUco ID {marker_id}.')
+                            self.mode = 'visual'
+                            self.cancel_navigation_goal()
+                            self.visual_servo_to_marker(tvec, rvec)
+                    
+                    # Draw detected markers for visualization
+                    cv2.aruco.drawDetectedMarkers(frame, corners)
+                    cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[target_index], tvecs[target_index], 0.05)
+                else:
+                    self.get_logger().info("obj has been done alread")
                 
             else:
                 # No markers detected, reset lock
@@ -157,9 +162,8 @@ class RamIsBetter(Node):
                     self.aruco_detected_pub.publish(msg)
             
             # Display the frame (optional, for debugging)
-            if self.show_debug_window:
-                cv2.imshow("RamIsBetter - ArUco Detection", frame)
-                cv2.waitKey(1)
+            cv2.imshow("RamIsBetter - ArUco Detection", frame)
+            cv2.waitKey(1)
             
         except Exception as e:
             self.get_logger().error(f"Error in image callback: {e}")
@@ -295,6 +299,8 @@ class RamIsBetter(Node):
             self.stop_robot()
             self.get_logger().info(
                 f'Aligned with ArUco ID {self.locked_id}: x={x_error:.3f}, z={tvec[2]:.3f}, yaw_err={yaw_error:.3f}')
+
+            #TODO: activate gpio node 
             return
 
         cmd = Twist()
