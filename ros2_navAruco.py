@@ -16,14 +16,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profi
 from sensor_msgs.msg import LaserScan
 import tf2_ros
 from tf2_ros import TransformException
-from sensor_msgs.msg import CompressedImage
-from cv_bridge import CvBridge
-import cv2
+from std_msgs.msg import Bool
 
-try:
-    import RPi.GPIO as GPIO
-except ImportError:
-    GPIO = None
 
 
 # ── existing constants ────────────────────────────────────────────────────
@@ -47,14 +41,6 @@ FRONT_STOP_DISTANCE = 0.24
 BLOCKED_RECOVERY_WAIT = 2.5
 BACKUP_DURATION = 1.2
 BACKUP_SPEED = -0.08
-ARUCO_LOST_TIMEOUT = 0.6
-ARUCO_ALIGN_THRESHOLD = 0.03
-ARUCO_DISTANCE_THRESHOLD = 0.05
-ARUCO_ANGULAR_GAIN = 1.2
-ARUCO_LINEAR_GAIN = 0.3
-ARUCO_MAX_LINEAR_SPEED = 0.22
-ARUCO_MAX_ANGULAR_SPEED = 1.5
-ARUCO_APPROACH_MIN_DISTANCE = 0.2
 
 # ── coverage constants ────────────────────────────────────────────────────
 # how many pooled cells around the robot count as "visited" each step
@@ -69,80 +55,6 @@ EIGHT_CONNECTED_NEIGHBORS = [
     (-1, 0), (1, 0), (0, -1), (0, 1),
     (-1, -1), (-1, 1), (1, -1), (1, 1),
 ]
-
-
-class ServoTrigger:
-    def __init__(self, node):
-        self.node = node
-        self.pin = int(node.declare_parameter('servo_gpio_pin', -1).value)
-        self.trigger_duration = float(
-            node.declare_parameter('servo_trigger_duration', 0.8).value)
-        self.use_pwm = bool(node.declare_parameter('servo_use_pwm', True).value)
-        self.pwm_frequency = float(
-            node.declare_parameter('servo_pwm_frequency', 50.0).value)
-        self.active_duty = float(
-            node.declare_parameter('servo_active_duty_cycle', 7.5).value)
-        self.idle_duty = float(
-            node.declare_parameter('servo_idle_duty_cycle', 0.0).value)
-
-        self.gpio_ready = False
-        self.pwm = None
-
-        if GPIO is None:
-            node.get_logger().warn(
-                'RPi.GPIO is not available. Servo trigger will run in log-only placeholder mode.')
-            return
-
-        if self.pin < 0:
-            node.get_logger().warn(
-                'Parameter servo_gpio_pin is not set. Servo trigger will stay in placeholder mode.')
-            return
-
-        try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.pin, GPIO.OUT)
-            GPIO.output(self.pin, GPIO.LOW)
-            if self.use_pwm:
-                self.pwm = GPIO.PWM(self.pin, self.pwm_frequency)
-                self.pwm.start(self.idle_duty)
-            self.gpio_ready = True
-            node.get_logger().info(f'Servo trigger ready on BCM GPIO {self.pin}.')
-        except Exception as exc:
-            node.get_logger().error(f'Failed to initialize servo GPIO: {exc}')
-            self.gpio_ready = False
-
-    def trigger(self):
-        if not self.gpio_ready:
-            self.node.get_logger().warn(
-                'Servo trigger requested, but hardware is in placeholder mode.')
-            return
-
-        try:
-            if self.use_pwm and self.pwm is not None:
-                self.pwm.ChangeDutyCycle(self.active_duty)
-                time.sleep(self.trigger_duration)
-                self.pwm.ChangeDutyCycle(self.idle_duty)
-            else:
-                GPIO.output(self.pin, GPIO.HIGH)
-                time.sleep(self.trigger_duration)
-                GPIO.output(self.pin, GPIO.LOW)
-        except Exception as exc:
-            self.node.get_logger().error(f'Servo trigger failed: {exc}')
-
-    def shutdown(self):
-        if GPIO is None:
-            return
-        try:
-            if self.pwm is not None:
-                self.pwm.ChangeDutyCycle(self.idle_duty)
-                self.pwm.stop()
-            if self.gpio_ready:
-                GPIO.output(self.pin, GPIO.LOW)
-        except Exception:
-            pass
-        finally:
-            if self.gpio_ready:
-                GPIO.cleanup(self.pin)
 
 
 def euler_from_quaternion(x, y, z, w):
@@ -256,41 +168,13 @@ class AutoNav(Node):
 
         self.create_timer(PLANNER_PERIOD, self.exploration_step)
 
-        # --- ArUco ---
-        self.bridge = CvBridge()
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        self.aruco_params = cv2.aruco.DetectorParameters_create()
 
-        self.camera_matrix = np.array([[1000, 0, 640], [0, 1000, 360], [0, 0, 1]], dtype=float)
-        self.dist_coeffs = np.zeros((5, 1))
-        self.marker_size = 0.05
+        self.aruco_detected = False
 
-        self.target_distance = 0.0
-        self.target_x = -0.06
-        self.marker_actions = {0: "fire", 1: "stop", 2: "scan"}
-        self.locked_id = None
-        self.triggered_marker_ids = set()
-        self.desired_marker_id = int(self.declare_parameter('aruco_target_id', -1).value)
-        self.min_marker_id = int(self.declare_parameter('aruco_min_id', 0).value)
-        self.max_marker_id = int(self.declare_parameter('aruco_max_id', 30).value)
-        self.follow_only_target_id = bool(
-            self.declare_parameter('aruco_follow_only_target_id', False).value)
-        self.visual_follow_enabled = bool(
-            self.declare_parameter('aruco_visual_follow_enabled', True).value)
-        self.show_debug_window = bool(
-            self.declare_parameter('aruco_show_debug_window', False).value)
-        self.servo_trigger = ServoTrigger(self)
-
-        # control flag
-        self.aruco_active = False
-        self.aruco_last_seen_time = 0.0
-        self.cancel_goal_when_accepted = False
-
-        # subscribe
         self.create_subscription(
-            CompressedImage,
-            '/image_raw/compressed',
-            self.image_callback,
+            Bool,
+            '/aruco_detected',
+            self.aruco_callback,
             10
         )
 
@@ -313,6 +197,18 @@ class AutoNav(Node):
         angles = msg.angle_min + np.arange(len(ranges), dtype=float) * msg.angle_increment
         self.scan_ranges = ranges
         self.scan_angles = np.mod(angles, 2.0 * math.pi)
+
+    def aruco_callback(self, msg):
+        self.aruco_detected = msg.data
+
+        if self.aruco_detected:
+            self.get_logger().info("Aruco detected! Stopping exploration.")
+            self.cancel_navigation_goal()
+            self.stop_robot()
+
+    def cancel_navigation_goal(self):
+        if self.goal_handle:
+            self.goal_handle.cancel_goal_async()
 
     # ── startup ───────────────────────────────────────────────────────────
 
@@ -631,70 +527,6 @@ class AutoNav(Node):
         twist = Twist()
         self.cmd_vel_pub.publish(twist)
 
-    def marker_is_allowed(self, marker_id):
-        if self.follow_only_target_id:
-            return marker_id == self.desired_marker_id
-        if self.desired_marker_id >= 0:
-            return marker_id == self.desired_marker_id
-        return self.min_marker_id <= marker_id <= self.max_marker_id
-
-    def choose_detected_marker(self, ids, tvecs):
-        candidates = []
-        for index in range(len(ids)):
-            marker_id = int(ids[index][0])
-            if not self.marker_is_allowed(marker_id):
-                continue
-            candidates.append((float(tvecs[index][0][2]), index))
-        if not candidates:
-            return None
-        candidates.sort(key=lambda item: item[0])
-        return candidates[0][1]
-
-    def reset_aruco_tracking(self):
-        self.aruco_active = False
-        self.locked_id = None
-        self.cancel_goal_when_accepted = False
-
-    def trigger_marker_action(self, marker_id):
-        if marker_id in self.triggered_marker_ids:
-            return
-
-        action = self.marker_actions.get(marker_id, "fire")
-        self.get_logger().info(f'Aruco action: {action}')
-
-        if action == 'fire':
-            self.get_logger().info('Servo trigger is commented out for now.')
-            # self.servo_trigger.trigger()
-        elif action == 'stop':
-            self.get_logger().info('Marker requested stop action.')
-        elif action == 'scan':
-            self.get_logger().info('Marker requested scan action placeholder.')
-        else:
-            self.get_logger().info('Unknown marker action, servo trigger is commented out for now.')
-            # self.servo_trigger.trigger()
-
-        self.triggered_marker_ids.add(marker_id)
-
-    def publish_aruco_follow_cmd(self, marker_x, marker_z):
-        cmd = Twist()
-        error_x = marker_x - self.target_x
-        error_z = marker_z - self.target_distance
-
-        if abs(error_x) > ARUCO_ALIGN_THRESHOLD and marker_z > ARUCO_APPROACH_MIN_DISTANCE:
-            cmd.angular.z = -ARUCO_ANGULAR_GAIN * error_x
-        elif abs(error_z) > ARUCO_DISTANCE_THRESHOLD:
-            cmd.linear.x = ARUCO_LINEAR_GAIN * error_z
-            cmd.angular.z = -ARUCO_ANGULAR_GAIN * error_x
-        else:
-            self.stop_robot()
-            if self.locked_id is not None:
-                self.trigger_marker_action(self.locked_id)
-            return
-
-        cmd.linear.x = max(min(cmd.linear.x, ARUCO_MAX_LINEAR_SPEED), -ARUCO_MAX_LINEAR_SPEED)
-        cmd.angular.z = max(min(cmd.angular.z, ARUCO_MAX_ANGULAR_SPEED), -ARUCO_MAX_ANGULAR_SPEED)
-        self.cmd_vel_pub.publish(cmd)
-
     def backup_from_obstacle(self):
         now = time.time()
         if now - self.last_backup_time < BLOCKED_RECOVERY_WAIT:
@@ -843,13 +675,6 @@ class AutoNav(Node):
             return
         self.goal_handle = goal_handle
         self.front_blocked_since = None
-        if self.cancel_goal_when_accepted or self.aruco_active:
-            self.cancel_goal_when_accepted = False
-            self.cancel_active_goal(
-                'goal accepted while ArUco control is active',
-                block_current_goal=False,
-            )
-            return
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self.goal_result_callback)
 
@@ -885,13 +710,11 @@ class AutoNav(Node):
             self.last_progress_time = time.time()
             self.front_blocked_since = None
 
-    def cancel_active_goal(self, reason, block_current_goal=True):
+    def cancel_active_goal(self, reason):
         if self.goal_handle is None:
-            if self.goal_in_flight:
-                self.cancel_goal_when_accepted = True
             return
         self.get_logger().warn(f'Cancelling goal: {reason}')
-        if block_current_goal and self.current_goal_cell is not None:
+        if self.current_goal_cell is not None:
             self.mark_goal_region_blocked(self.current_goal_cell)
         self.goal_handle.cancel_goal_async()
         self.goal_handle = None
@@ -908,10 +731,9 @@ class AutoNav(Node):
     # ── main timer ────────────────────────────────────────────────────────
 
     def exploration_step(self):
-        if not self.system_ready:
+        if self.aruco_detected:
             return
-        
-        if self.aruco_active:
+        if not self.system_ready:
             return
 
         front = self.front_clearance()
@@ -947,76 +769,6 @@ class AutoNav(Node):
         goal_cell, goal_world, path_length = chosen_goal
         self.send_nav_goal(goal_cell, goal_world, path_length)
 
-    def image_callback(self, msg):
-        try:
-            frame = self.bridge.compressed_imgmsg_to_cv2(msg, 'bgr8')
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            corners, ids, _ = cv2.aruco.detectMarkers(
-                gray, self.aruco_dict, parameters=self.aruco_params)
-
-            if ids is not None:
-                detected_ids = [int(marker[0]) for marker in ids]
-                self.get_logger().info(f'Detected ArUco IDs: {detected_ids}')
-                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-                    corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
-
-                target_index = self.choose_detected_marker(ids, tvecs)
-                if target_index is None:
-                    if self.aruco_active:
-                        self.stop_robot()
-                    return
-
-                if not self.aruco_active:
-                    self.get_logger().info(
-                        'ArUco marker detected. Switching control from Nav2 to visual follow.')
-                self.aruco_active = True
-                self.aruco_last_seen_time = time.time()
-                self.cancel_active_goal(
-                    'ArUco marker detected - switching to visual follow',
-                    block_current_goal=False,
-                )
-
-                marker_id = ids[target_index][0]
-                x = tvecs[target_index][0][0]
-                z = tvecs[target_index][0][2]
-
-                if self.locked_id is None:
-                    self.locked_id = marker_id
-
-                if marker_id != self.locked_id:
-                    return
-
-                if self.visual_follow_enabled:
-                    self.publish_aruco_follow_cmd(x, z)
-                else:
-                    self.stop_robot()
-                    self.trigger_marker_action(marker_id)
-
-                cv2.aruco.drawDetectedMarkers(frame, corners)
-                cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[0], tvecs[0], 0.05)
-                self.get_logger().info(
-                    f"Tracking ArUco ID {int(marker_id)} | X={x:.2f}, Z={z:.2f}"
-                )
-
-            else:
-                if self.aruco_active:
-                    time_since_seen = time.time() - self.aruco_last_seen_time
-                    self.stop_robot()
-                    if time_since_seen >= ARUCO_LOST_TIMEOUT:
-                        if self.locked_id is not None:
-                            self.triggered_marker_ids.discard(self.locked_id)
-                        self.reset_aruco_tracking()
-                        self.get_logger().info(
-                            'ArUco marker lost. Returning control to Nav2 exploration.')
-
-            if self.show_debug_window:
-                cv2.imshow("Compressed RPi Stream", frame)
-                cv2.waitKey(1)
-
-        except Exception as e:
-            self.get_logger().error(f"Aruco error: {e}")
-
 
 def main(args=None):
     rclpy.init(args=args)
@@ -1027,11 +779,7 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.')
     finally:
-        node.stop_robot()
-        node.servo_trigger.shutdown()
         node.destroy_node()
-        if node.show_debug_window:
-            cv2.destroyAllWindows()
         rclpy.shutdown()
 
 
