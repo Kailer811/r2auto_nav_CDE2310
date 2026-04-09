@@ -12,6 +12,8 @@ import numpy as np
 import tf2_ros
 import math
 from tf2_ros import TransformException
+from std_msgs.msg import Bool
+
 
 
 DEFAULT_CAMERA_FRAMES = [
@@ -81,6 +83,11 @@ class RamIsBetter(Node):
         self.goal_handle = None
         self.mode = 'search'
         self.last_goal_pose = None
+
+        self.aruco_detected_pub = self.create_publisher(
+            Bool,
+            '/aruco_detected',
+            10)
         
         self.get_logger().info("RamIsBetter node initialized. Ready to detect ArUco markers and navigate towards them!")
 
@@ -94,6 +101,10 @@ class RamIsBetter(Node):
             corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
             
             if ids is not None:
+                msg = Bool()
+                msg.data = True
+                self.aruco_detected_pub.publish(msg)
+
                 # Estimate pose of markers
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
@@ -144,6 +155,9 @@ class RamIsBetter(Node):
                     self.active_source_frame = None
                     self.mode = 'search'
                     self.stop_robot()
+                    msg = Bool()
+                    msg.data = False
+                    self.aruco_detected_pub.publish(msg)
             
             # Display the frame (optional, for debugging)
             if self.show_debug_window:
