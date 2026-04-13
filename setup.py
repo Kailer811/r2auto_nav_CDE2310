@@ -34,6 +34,7 @@ setup(
             'nav2_go_to_pose = auto_nav.nav2_go_to_pose:main',
             'RamIsBetter = auto_nav.RamIsBetter:main',
             'aruco_precision_dock = auto_nav.aruco_precision_dock:main',
+            'aruco_pid_dock = auto_nav.aruco_pid_dock:main',
         ],
     },
 )

@@ -9,6 +9,7 @@
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/servo_motor_run.py
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_Aruco.py
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_camera2.py
+/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/docking_basic.py
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/r2mover.py
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_navAruco.py
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__init__.py
@@ -28,6 +29,7 @@
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/servo_motor_run.cpython-310.pyc
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/ros2_Aruco.cpython-310.pyc
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/ros2_camera2.cpython-310.pyc
+/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/docking_basic.cpython-310.pyc
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/r2mover.cpython-310.pyc
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/ros2_navAruco.cpython-310.pyc
 /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/__pycache__/__init__.cpython-310.pyc

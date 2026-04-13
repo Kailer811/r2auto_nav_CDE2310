@@ -14,6 +14,7 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Bool
 import tf2_ros
 from tf2_ros import TransformException
 
@@ -134,6 +135,8 @@ class AutoNav(Node):
             OccupancyGrid, 'map', self.map_callback, map_qos)
         self.scan_sub = self.create_subscription(
             LaserScan, 'scan', self.scan_callback, qos_profile_sensor_data)
+        self.stop_nav_sub = self.create_subscription(
+            Bool, '/stop_nav', self.stop_nav_callback, 10)
 
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
@@ -156,6 +159,8 @@ class AutoNav(Node):
         self.system_ready = False
         self.front_blocked_since = None
         self.last_backup_time = 0.0
+        self.stop_nav_active = False
+        self.cancel_goal_on_accept = False
 
         # ── coverage tracking ─────────────────────────────────────────────
         # set of pooled (row, col) cells the robot has physically been near
@@ -185,6 +190,24 @@ class AutoNav(Node):
         angles = msg.angle_min + np.arange(len(ranges), dtype=float) * msg.angle_increment
         self.scan_ranges = ranges
         self.scan_angles = np.mod(angles, 2.0 * math.pi)
+
+    def stop_nav_callback(self, msg):
+        stop_active = bool(msg.data)
+        if stop_active == self.stop_nav_active:
+            return
+
+        self.stop_nav_active = stop_active
+        if self.stop_nav_active:
+            self.get_logger().info(
+                'Received stop_nav=True. Pausing exploration and cancelling Nav2 goals.')
+            self.cancel_goal_on_accept = True
+            self.cancel_active_goal(
+                'stop_nav asserted by aruco_pid_dock', block_current_goal=False)
+            self.stop_robot()
+        else:
+            self.get_logger().info(
+                'Received stop_nav=False. Resuming exploration.')
+            self.cancel_goal_on_accept = False
 
     # ── startup ───────────────────────────────────────────────────────────
 
@@ -649,6 +672,14 @@ class AutoNav(Node):
             self.current_goal_cell = None
             self.goal_handle = None
             return
+        if self.stop_nav_active or self.cancel_goal_on_accept:
+            self.get_logger().info(
+                'Cancelling accepted Nav2 goal because stop_nav is active.')
+            goal_handle.cancel_goal_async()
+            self.goal_handle = None
+            self.current_goal_cell = None
+            self.front_blocked_since = None
+            return
         self.goal_handle = goal_handle
         self.front_blocked_since = None
         result_future = goal_handle.get_result_async()
@@ -686,11 +717,11 @@ class AutoNav(Node):
             self.last_progress_time = time.time()
             self.front_blocked_since = None
 
-    def cancel_active_goal(self, reason):
+    def cancel_active_goal(self, reason, block_current_goal=True):
         if self.goal_handle is None:
             return
         self.get_logger().warn(f'Cancelling goal: {reason}')
-        if self.current_goal_cell is not None:
+        if block_current_goal and self.current_goal_cell is not None:
             self.mark_goal_region_blocked(self.current_goal_cell)
         self.goal_handle.cancel_goal_async()
         self.goal_handle = None
@@ -708,6 +739,10 @@ class AutoNav(Node):
 
     def exploration_step(self):
         if not self.system_ready:
+            return
+
+        if self.stop_nav_active:
+            self.stop_robot()
             return
 
         front = self.front_clearance()

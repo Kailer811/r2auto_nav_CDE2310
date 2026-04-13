@@ -6,6 +6,7 @@ setup.py
 ./__init__.py
 ./aruco_precision_dock.py
 ./auto_nav2.py
+./docking_basic.py
 ./nav2_go_to_pose.py
 ./r2auto_nav.py
 ./r2mover.py

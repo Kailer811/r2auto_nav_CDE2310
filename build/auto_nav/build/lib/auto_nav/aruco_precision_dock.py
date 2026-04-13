@@ -27,7 +27,6 @@ class ArucoPrecisionDock(Node):
 
         self.linear_gain = float(self.declare_parameter('linear_gain', 0.8).value)
         self.lateral_gain = float(self.declare_parameter('lateral_gain', 3.2).value)
-        self.yaw_gain = float(self.declare_parameter('yaw_gain', 1.8).value)
 
         self.max_linear_speed = float(
             self.declare_parameter('max_linear_speed', 0.12).value)
@@ -35,10 +34,12 @@ class ArucoPrecisionDock(Node):
             self.declare_parameter('max_angular_speed', 1.0).value)
         self.search_angular_speed = float(
             self.declare_parameter('search_angular_speed', 0.25).value)
+        self.angular_direction = float(
+            self.declare_parameter('angular_direction', -1.0).value)
 
         self.x_threshold = float(self.declare_parameter('x_threshold', 0.01).value)
-        self.yaw_threshold = float(self.declare_parameter('yaw_threshold', 0.05).value)
-        self.pitch_threshold = float(self.declare_parameter('pitch_threshold', 0.08).value)
+        self.realign_x_threshold = float(
+            self.declare_parameter('realign_x_threshold', 0.025).value)
         self.distance_threshold = float(
             self.declare_parameter('distance_threshold', 0.015).value)
         self.loss_timeout = float(self.declare_parameter('loss_timeout', 0.75).value)
@@ -74,6 +75,7 @@ class ArucoPrecisionDock(Node):
         self.locked_id = None
         self.last_seen_time = None
         self.docked = False
+        self.phase = 'align_x'
 
         self.create_timer(0.1, self.watchdog_callback)
 
@@ -107,6 +109,7 @@ class ArucoPrecisionDock(Node):
         if self.locked_id != selected_id:
             self.locked_id = selected_id
             self.docked = False
+            self.phase = 'align_x'
             self.get_logger().info(f'Locked on ArUco marker ID {self.locked_id}')
 
         rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
@@ -119,44 +122,54 @@ class ArucoPrecisionDock(Node):
 
         depth = float(tvec[2])
         x_error = float(tvec[0])
-        yaw_error, pitch_error = self.marker_axis_errors(rvec)
         distance_error = depth - self.dock_distance
 
-        aligned = (
-            abs(x_error) <= self.x_threshold
-            and abs(yaw_error) <= self.yaw_threshold
-            and abs(pitch_error) <= self.pitch_threshold
-            and abs(distance_error) <= self.distance_threshold
-        )
+        self.get_logger().info(
+            f'Marker {self.locked_id} pose: tvec.x={x_error:.4f}, tvec.z={depth:.4f}')
 
-        if aligned:
-            if not self.docked:
+        if self.phase == 'align_x':
+            if abs(x_error) <= self.x_threshold:
+                self.phase = 'forward'
+                self.stop_robot()
                 self.get_logger().info(
-                    'Docked with marker '
-                    f'{self.locked_id}: x={x_error:.4f} z={depth:.4f} '
-                    f'yaw={yaw_error:.4f} pitch={pitch_error:.4f}')
-            self.docked = True
-            self.stop_robot()
-        else:
-            self.docked = False
+                    f'X aligned for marker {self.locked_id}. Starting forward approach.')
+                return
+
             cmd = Twist()
-            cmd.linear.x = self.clamp(
-                self.linear_gain * distance_error,
-                -self.max_linear_speed,
-                self.max_linear_speed)
             cmd.angular.z = self.clamp(
-                -(self.lateral_gain * x_error + self.yaw_gain * yaw_error),
+                self.angular_direction * self.lateral_gain * x_error,
                 -self.max_angular_speed,
                 self.max_angular_speed)
-
-            if abs(x_error) > 0.04 or abs(yaw_error) > 0.10:
-                cmd.linear.x = min(cmd.linear.x, 0.04)
-
             self.cmd_vel_pub.publish(cmd)
             self.get_logger().info(
-                f'Tracking marker {self.locked_id}: x={x_error:.4f} '
-                f'z={depth:.4f} dist_err={distance_error:.4f} '
-                f'yaw={yaw_error:.4f} pitch={pitch_error:.4f}')
+                f'Aligning X for marker {self.locked_id}: tx={x_error:.4f} z={depth:.4f}')
+            return
+
+        if abs(x_error) > self.realign_x_threshold:
+            self.phase = 'align_x'
+            self.stop_robot()
+            self.get_logger().info(
+                f'Marker drifted off-center (tx={x_error:.4f}). Re-aligning X.')
+            return
+
+        if abs(distance_error) <= self.distance_threshold:
+            if not self.docked:
+                self.get_logger().info(
+                    f'Docked with marker {self.locked_id}: tx={x_error:.4f} z={depth:.4f}')
+            self.docked = True
+            self.stop_robot()
+            return
+
+        self.docked = False
+        cmd = Twist()
+        cmd.linear.x = self.clamp(
+            self.linear_gain * distance_error,
+            0.0,
+            self.max_linear_speed)
+        self.cmd_vel_pub.publish(cmd)
+        self.get_logger().info(
+            f'Forward approach to marker {self.locked_id}: tx={x_error:.4f} '
+            f'z={depth:.4f} dist_err={distance_error:.4f}')
 
         if self.show_debug_window:
             cv2.aruco.drawDetectedMarkers(frame, corners, ids)
@@ -175,13 +188,6 @@ class ArucoPrecisionDock(Node):
         areas = [cv2.contourArea(corner.astype(np.float32)) for corner in corners]
         return int(np.argmax(areas))
 
-    def marker_axis_errors(self, rvec):
-        rotation_matrix, _ = cv2.Rodrigues(np.array(rvec, dtype=float))
-        marker_normal = rotation_matrix[:, 2]
-        yaw_error = math.atan2(float(marker_normal[0]), float(marker_normal[2]))
-        pitch_error = math.atan2(float(marker_normal[1]), float(marker_normal[2]))
-        return yaw_error, pitch_error
-
     def handle_marker_loss(self, frame):
         if self.last_seen_time is None:
             self.publish_search_rotation()
@@ -190,10 +196,13 @@ class ArucoPrecisionDock(Node):
                 self.get_clock().now() - self.last_seen_time).nanoseconds / 1e9
             if elapsed > self.loss_timeout:
                 if self.locked_id is not None:
-                    self.get_logger().info('Lost ArUco marker. Clearing lock.')
-                self.locked_id = None
-                self.docked = False
-                self.publish_search_rotation()
+                    self.get_logger().info(
+                        'Lost locked ArUco marker. Stopping so it can come back into view.')
+                    self.docked = False
+                    self.phase = 'align_x'
+                    self.stop_robot()
+                else:
+                    self.publish_search_rotation()
             else:
                 self.stop_robot()
 
@@ -212,9 +221,12 @@ class ArucoPrecisionDock(Node):
 
         elapsed = (self.get_clock().now() - self.last_seen_time).nanoseconds / 1e9
         if elapsed > self.loss_timeout:
-            self.locked_id = None
-            self.docked = False
-            self.publish_search_rotation()
+            if self.locked_id is None:
+                self.publish_search_rotation()
+            else:
+                self.docked = False
+                self.phase = 'align_x'
+                self.stop_robot()
 
     def stop_robot(self):
         self.cmd_vel_pub.publish(Twist())
