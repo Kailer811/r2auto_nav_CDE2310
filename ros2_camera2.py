@@ -63,13 +63,12 @@ class ArucoFollowerCompressed(Node):
                     cam_in_marker = -R_inv @ tvec
 
                     x = float(cam_in_marker[0])
-                    y = float(cam_in_marker[1])
                     z = float(cam_in_marker[2])
                     distance_xz = float(np.sqrt(x**2 + z**2))
 
                     self.get_logger().info(
-                        f"ID {marker_id} | camera in marker frame -> "
-                        f"X: {x:.3f} m, Y: {y:.3f} m, Z: {z:.3f} m, XZ: {distance_xz:.3f} m"
+                        f"ID {marker_id}: "
+                        f"X: {x:.2f} m, Z: {z:.2f} m" 
                     )
 
                     cv2.drawFrameAxes(
