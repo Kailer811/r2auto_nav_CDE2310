@@ -36,6 +36,7 @@ setup(
             'aruco_precision_dock = auto_nav.aruco_precision_dock:main',
             'aruco_pid_dock = auto_nav.aruco_pid_dock:main',
             'aruco_nav_fsm = auto_nav.aruco_nav_fsm:main',
+            'ros2_nav = auto_nav.ros2_nav:main'
         ],
     },
 )

@@ -24,6 +24,7 @@ UNKNOWN_VALUE = -1
 WALL_THRESHOLD = 60
 POOL_SIZE = 2
 WALL_INFLATION_RADIUS = 1
+FRONTIER_GOAL_INFLATION_RADIUS = 0
 MIN_FRONTIER_SIZE = 3
 MIN_FREE_CELLS_TO_PLAN = 20
 MAX_FRONTIER_GOALS_PER_CLUSTER = 4
@@ -40,6 +41,8 @@ FRONT_STOP_DISTANCE = 0.24
 BLOCKED_RECOVERY_WAIT = 2.5
 BACKUP_DURATION = 1.2
 BACKUP_SPEED = -0.08
+SEARCH_ROTATION_SPEED = 0.5
+SEARCH_ROTATION_TARGET = 2.0 * math.pi
 
 # ── coverage constants ────────────────────────────────────────────────────
 # how many pooled cells around the robot count as "visited" each step
@@ -137,6 +140,8 @@ class AutoNav(Node):
             LaserScan, 'scan', self.scan_callback, qos_profile_sensor_data)
         self.stop_nav_sub = self.create_subscription(
             Bool, '/stop_nav', self.stop_nav_callback, 10)
+        self.aruco_detected_sub = self.create_subscription(
+            Bool, '/aruco_detected', self.aruco_detected_callback, 10)
 
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
@@ -161,6 +166,10 @@ class AutoNav(Node):
         self.last_backup_time = 0.0
         self.stop_nav_active = False
         self.cancel_goal_on_accept = False
+        self.aruco_detected = False
+        self.search_rotation_active = False
+        self.search_rotation_accumulated = 0.0
+        self.search_rotation_last_yaw = None
 
         # ── coverage tracking ─────────────────────────────────────────────
         # set of pooled (row, col) cells the robot has physically been near
@@ -198,6 +207,7 @@ class AutoNav(Node):
 
         self.stop_nav_active = stop_active
         if self.stop_nav_active:
+            self.finish_search_rotation()
             self.get_logger().info(
                 'Received stop_nav=True. Pausing exploration and cancelling Nav2 goals.')
             self.cancel_goal_on_accept = True
@@ -208,6 +218,12 @@ class AutoNav(Node):
             self.get_logger().info(
                 'Received stop_nav=False. Resuming exploration.')
             self.cancel_goal_on_accept = False
+
+    def aruco_detected_callback(self, msg):
+        self.aruco_detected = bool(msg.data)
+        if self.aruco_detected and self.search_rotation_active:
+            self.get_logger().info('ArUco detected during coverage search spin.')
+            self.finish_search_rotation()
 
     # ── startup ───────────────────────────────────────────────────────────
 
@@ -291,16 +307,19 @@ class AutoNav(Node):
         grid[pooled_occ >= WALL_THRESHOLD] = 1
         return grid
 
-    def inflate_walls(self, grid):
+    def inflate_walls_with_radius(self, grid, radius):
         inflated = grid.copy()
         rows, cols = grid.shape
         for row, col in np.argwhere(grid == 1):
-            for d_row in range(-WALL_INFLATION_RADIUS, WALL_INFLATION_RADIUS+1):
-                for d_col in range(-WALL_INFLATION_RADIUS, WALL_INFLATION_RADIUS+1):
+            for d_row in range(-radius, radius + 1):
+                for d_col in range(-radius, radius + 1):
                     nr, nc = row+d_row, col+d_col
                     if 0 <= nr < rows and 0 <= nc < cols and inflated[nr, nc] == 0:
                         inflated[nr, nc] = 1
         return inflated
+
+    def inflate_walls(self, grid):
+        return self.inflate_walls_with_radius(grid, WALL_INFLATION_RADIUS)
 
     def world_to_pooled_cell(self, world_x, world_y, pooled_shape):
         map_x = (world_x - self.map_origin.x) / self.map_resolution
@@ -522,9 +541,98 @@ class AutoNav(Node):
                 candidates.append(cell)
         return candidates
 
+    def choose_frontier_goal(self, frontier_cell, robot_cell, raw_grid, frontier_inflated_grid):
+        goal_cell = self.select_standoff_goal(
+            frontier_cell, robot_cell, raw_grid, frontier_inflated_grid)
+        if goal_cell is not None:
+            path_cells = astar(frontier_inflated_grid, robot_cell, goal_cell)
+            if path_cells:
+                return goal_cell, path_cells
+
+        # Fallback: allow narrow passages by using the raw free-space grid for
+        # the frontier approach when the stricter frontier map finds no route.
+        goal_cell = self.select_standoff_goal(
+            frontier_cell, robot_cell, raw_grid, raw_grid)
+        if goal_cell is not None:
+            path_cells = astar(raw_grid, robot_cell, goal_cell)
+            if path_cells:
+                self.get_logger().info(
+                    f'Using narrow-gap frontier fallback for cell {frontier_cell}.')
+                return goal_cell, path_cells
+
+        # Final fallback: if a safe standoff cell cannot be found, try the
+        # frontier cell itself on the raw grid.
+        if raw_grid[frontier_cell] == 0:
+            path_cells = astar(raw_grid, robot_cell, frontier_cell)
+            if path_cells:
+                self.get_logger().info(
+                    f'Using direct frontier fallback for cell {frontier_cell}.')
+                return frontier_cell, path_cells
+
+        return None, None
+
     def stop_robot(self):
         twist = Twist()
         self.cmd_vel_pub.publish(twist)
+
+    def normalize_angle(self, angle):
+        return math.atan2(math.sin(angle), math.cos(angle))
+
+    def start_search_rotation(self):
+        if self.search_rotation_active or self.stop_nav_active:
+            return
+
+        try:
+            _, _, yaw = self.get_pose()
+        except TransformException:
+            self.get_logger().warn(
+                'Skipping coverage search spin because robot pose is unavailable.')
+            return
+
+        self.search_rotation_active = True
+        self.search_rotation_accumulated = 0.0
+        self.search_rotation_last_yaw = yaw
+        self.get_logger().info(
+            'Coverage goal reached. Rotating 360 degrees to search for ArUco.')
+
+    def finish_search_rotation(self):
+        if not self.search_rotation_active:
+            return
+        self.search_rotation_active = False
+        self.search_rotation_accumulated = 0.0
+        self.search_rotation_last_yaw = None
+        self.stop_robot()
+
+    def update_search_rotation(self):
+        if not self.search_rotation_active:
+            return False
+
+        if self.aruco_detected:
+            self.finish_search_rotation()
+            return False
+
+        try:
+            _, _, yaw = self.get_pose()
+        except TransformException:
+            self.get_logger().warn(
+                'Stopping coverage search spin because robot pose is unavailable.')
+            self.finish_search_rotation()
+            return False
+
+        if self.search_rotation_last_yaw is not None:
+            yaw_delta = self.normalize_angle(yaw - self.search_rotation_last_yaw)
+            self.search_rotation_accumulated += abs(yaw_delta)
+        self.search_rotation_last_yaw = yaw
+
+        if self.search_rotation_accumulated >= SEARCH_ROTATION_TARGET:
+            self.get_logger().info('Completed 360-degree coverage search spin.')
+            self.finish_search_rotation()
+            return False
+
+        twist = Twist()
+        twist.angular.z = SEARCH_ROTATION_SPEED
+        self.cmd_vel_pub.publish(twist)
+        return True
 
     def backup_from_obstacle(self):
         now = time.time()
@@ -558,6 +666,8 @@ class AutoNav(Node):
         pooled_occ  = self.pool_map(self.map_data)
         raw_grid    = self.classify_grid(pooled_occ)
         inflated_grid = self.inflate_walls(raw_grid)
+        frontier_inflated_grid = self.inflate_walls_with_radius(
+            raw_grid, FRONTIER_GOAL_INFLATION_RADIUS)
 
         free_cells = int(np.count_nonzero(raw_grid == 0))
         if free_cells < MIN_FREE_CELLS_TO_PLAN:
@@ -578,6 +688,10 @@ class AutoNav(Node):
         if robot_cell is None:
             self.log_status('No goal: unable to snap robot pose to a safe planning cell.')
             return None
+        frontier_robot_cell = self.nearest_free_to_robot(
+            frontier_inflated_grid, tracking_cell, allow_traverse_occupied=True)
+        if frontier_robot_cell is None:
+            frontier_robot_cell = tracking_cell
 
         # mark where the robot currently is as visited
         self.mark_visited(tracking_cell, raw_grid.shape)
@@ -590,20 +704,20 @@ class AutoNav(Node):
                 self.get_logger().info('New frontiers found — back to frontier mode.')
                 self.coverage_mode = False
 
-            candidates = self.candidate_frontiers(clusters, robot_cell, inflated_grid)
+            candidates = self.candidate_frontiers(
+                clusters, frontier_robot_cell, frontier_inflated_grid)
+            if not candidates:
+                candidates = self.candidate_frontiers(
+                    clusters, frontier_robot_cell, raw_grid)
             best_goal_cell = None
             best_goal_world = None
             best_path_length = float('inf')
 
             for frontier_cell in candidates:
-                goal_cell = self.select_standoff_goal(
-                    frontier_cell, robot_cell, raw_grid, inflated_grid)
-                if goal_cell is None:
+                goal_cell, path_cells = self.choose_frontier_goal(
+                    frontier_cell, frontier_robot_cell, raw_grid, frontier_inflated_grid)
+                if goal_cell is None or path_cells is None:
                     self.mark_goal_region_blocked(frontier_cell)
-                    continue
-                path_cells = astar(inflated_grid, robot_cell, goal_cell)
-                if not path_cells:
-                    self.mark_goal_region_blocked(goal_cell)
                     continue
                 path_length = self.path_length_cells(path_cells)
                 if path_length >= best_path_length:
@@ -690,6 +804,8 @@ class AutoNav(Node):
         status = result.status
         if status == 4:
             self.get_logger().info('Nav2 goal reached.')
+            if self.coverage_mode:
+                self.start_search_rotation()
         elif self.current_goal_cell is not None:
             self.mark_goal_region_blocked(self.current_goal_cell)
             self.get_logger().warn(f'Goal ended status={status}, blocking region.')
@@ -743,6 +859,9 @@ class AutoNav(Node):
 
         if self.stop_nav_active:
             self.stop_robot()
+            return
+
+        if self.update_search_rotation():
             return
 
         front = self.front_clearance()
