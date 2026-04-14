@@ -35,6 +35,10 @@ class ArucoPidDock(Node):
         self.linear_gain = float(self.declare_parameter('linear_gain', 4.0).value)
         self.angular_gain_x = float(self.declare_parameter('angular_gain_x', 4.0).value)
         self.angular_gain_yaw = float(self.declare_parameter('angular_gain_yaw', 0.5).value)
+        self.angular_direction = float(
+            self.declare_parameter('angular_direction', 1.0).value)
+        self.search_direction_gain = float(
+            self.declare_parameter('search_direction_gain', 1.0).value)
         self.max_linear_speed = float(
             self.declare_parameter('max_linear_speed', 0.20).value)
         self.max_angular_speed = float(
@@ -138,7 +142,9 @@ class ArucoPidDock(Node):
             self.get_logger().info(f'Locked on ArUco marker ID {marker_id}')
 
         self.last_seen_time = time.time()
-        self.search_direction = -1.0 if float(tvec[0]) < 0.0 else 1.0
+        self.search_direction = (
+            -1.0 if float(tvec[0]) < 0.0 else 1.0
+        ) * self.search_direction_gain
         self.publish_detected(True)
         self.publish_stop_nav(True)
         self.get_logger().info(
@@ -192,7 +198,7 @@ class ArucoPidDock(Node):
         self.docked = False
         cmd = Twist()
         cmd.linear.x = self.linear_gain * distance_error
-        cmd.angular.z = -(
+        cmd.angular.z = self.angular_direction * (
             self.angular_gain_x * x_error
             + self.angular_gain_yaw * yaw_error
         )
