@@ -21,21 +21,22 @@ from tf2_ros import TransformException
 
 # ── existing constants ────────────────────────────────────────────────────
 UNKNOWN_VALUE = -1
-WALL_THRESHOLD = 60
+WALL_THRESHOLD = 20
 POOL_SIZE = 2
 WALL_INFLATION_RADIUS = 1
 FRONTIER_GOAL_INFLATION_RADIUS = 0
-MIN_FRONTIER_SIZE = 3
+MIN_FRONTIER_SIZE = 1
 MIN_FREE_CELLS_TO_PLAN = 20
 MAX_FRONTIER_GOALS_PER_CLUSTER = 4
 MAX_FRONTIER_CLUSTERS = 8
 BLOCKED_GOAL_COOLDOWN = 25.0
-BLOCKED_GOAL_RADIUS = 2
+BLOCKED_GOAL_RADIUS = 1
 PROGRESS_TIMEOUT = 15.0
 MIN_PROGRESS_DISTANCE = 0.08
 PLANNER_PERIOD = 1.0
 STARTUP_TIMEOUT = 20.0
-GOAL_SEARCH_RADIUS = 4
+GOAL_SEARCH_RADIUS = 8
+MAX_FRONTIER_APPROACH_RADIUS = 16
 FRONT_HALF_ANGLE_DEG = 18.0
 FRONT_STOP_DISTANCE = 0.24
 BLOCKED_RECOVERY_WAIT = 2.5
@@ -298,7 +299,11 @@ class AutoNav(Node):
             for col in range(pooled_w):
                 block = occ_grid[row*POOL_SIZE:(row+1)*POOL_SIZE,
                                  col*POOL_SIZE:(col+1)*POOL_SIZE]
-                pooled[row, col] = int(np.max(block))
+                # Preserve unknown boundaries so frontiers remain visible after pooling.
+                if np.any(block == UNKNOWN_VALUE):
+                    pooled[row, col] = UNKNOWN_VALUE
+                else:
+                    pooled[row, col] = int(np.max(block))
         return pooled
 
     def classify_grid(self, pooled_occ):
@@ -436,7 +441,7 @@ class AutoNav(Node):
             for col in range(cols):
                 if grid[row, col] != 0:
                     continue
-                for d_row, d_col in CARDINAL_NEIGHBORS:
+                for d_row, d_col in EIGHT_CONNECTED_NEIGHBORS:
                     nr, nc = row+d_row, col+d_col
                     if 0 <= nr < rows and 0 <= nc < cols and grid[nr, nc] == 2:
                         frontier_mask[row, col] = True
@@ -525,11 +530,11 @@ class AutoNav(Node):
                     best_goal = (gr, gc)
         return best_goal
 
-    def candidate_frontiers(self, clusters, robot_cell, inflated_grid):
+    def candidate_frontiers(self, clusters, robot_cell, _occupancy_grid):
         candidates = []
         for cluster in clusters:
             valid = [c for c in cluster
-                     if c not in self.blocked_goals and inflated_grid[c] == 0]
+                     if c not in self.blocked_goals]
             if not valid:
                 continue
             rep = self.cluster_centroid(valid)
@@ -540,6 +545,57 @@ class AutoNav(Node):
             for cell in ranked[:MAX_FRONTIER_GOALS_PER_CLUSTER]:
                 candidates.append(cell)
         return candidates
+
+    def cell_touches_unknown(self, grid, cell):
+        row, col = cell
+        rows, cols = grid.shape
+        for d_row, d_col in EIGHT_CONNECTED_NEIGHBORS:
+            nr, nc = row + d_row, col + d_col
+            if 0 <= nr < rows and 0 <= nc < cols and grid[nr, nc] == 2:
+                return True
+        return False
+
+    def search_frontier_region_goal(self, frontier_cell, robot_cell, raw_grid):
+        fr, fc = frontier_cell
+        rows, cols = raw_grid.shape
+        best_goal = None
+        best_path = None
+        best_score = None
+
+        for radius in range(0, MAX_FRONTIER_APPROACH_RADIUS + 1):
+            row_min = max(0, fr - radius)
+            row_max = min(rows - 1, fr + radius)
+            col_min = max(0, fc - radius)
+            col_max = min(cols - 1, fc + radius)
+
+            for row in range(row_min, row_max + 1):
+                for col in range(col_min, col_max + 1):
+                    if max(abs(row - fr), abs(col - fc)) != radius:
+                        continue
+                    if raw_grid[row, col] != 0:
+                        continue
+
+                    candidate = (row, col)
+                    path = astar(raw_grid, robot_cell, candidate)
+                    if not path:
+                        continue
+
+                    path_length = self.path_length_cells(path)
+                    score = (
+                        0 if self.cell_touches_unknown(raw_grid, candidate) else 1,
+                        abs(row - fr) + abs(col - fc),
+                        -self.clearance_score(raw_grid, row, col),
+                        path_length,
+                    )
+                    if best_score is None or score < best_score:
+                        best_score = score
+                        best_goal = candidate
+                        best_path = path
+
+            if best_goal is not None:
+                return best_goal, best_path
+
+        return None, None
 
     def choose_frontier_goal(self, frontier_cell, robot_cell, raw_grid, frontier_inflated_grid):
         goal_cell = self.select_standoff_goal(
@@ -568,6 +624,13 @@ class AutoNav(Node):
                 self.get_logger().info(
                     f'Using direct frontier fallback for cell {frontier_cell}.')
                 return frontier_cell, path_cells
+
+        goal_cell, path_cells = self.search_frontier_region_goal(
+            frontier_cell, robot_cell, raw_grid)
+        if goal_cell is not None and path_cells is not None:
+            self.get_logger().info(
+                f'Using expanded frontier-region fallback for cell {frontier_cell}.')
+            return goal_cell, path_cells
 
         return None, None
 
@@ -709,6 +772,8 @@ class AutoNav(Node):
             if not candidates:
                 candidates = self.candidate_frontiers(
                     clusters, frontier_robot_cell, raw_grid)
+            self.log_status(
+                f'Frontier clusters={len(clusters)} candidates={len(candidates)}')
             best_goal_cell = None
             best_goal_world = None
             best_path_length = float('inf')
@@ -717,7 +782,6 @@ class AutoNav(Node):
                 goal_cell, path_cells = self.choose_frontier_goal(
                     frontier_cell, frontier_robot_cell, raw_grid, frontier_inflated_grid)
                 if goal_cell is None or path_cells is None:
-                    self.mark_goal_region_blocked(frontier_cell)
                     continue
                 path_length = self.path_length_cells(path_cells)
                 if path_length >= best_path_length:
@@ -728,6 +792,9 @@ class AutoNav(Node):
 
             if best_goal_cell is not None:
                 return best_goal_cell, best_goal_world, best_path_length
+
+            self.log_status('Frontiers found but no reachable frontier goal selected.')
+            return None
 
         # ── Phase 2: coverage mode ────────────────────────────────────────
         # No frontiers left — drive through unvisited areas
