@@ -52,9 +52,9 @@ class RamIsBetter(Node):
         # How far IN FRONT of the marker face the robot should stop (metres).
         # Positive = in front of the marker (the side the marker is facing).
         self.standoff_distance = float(
-            self.declare_parameter('standoff_distance', 0.75).value)
+            self.declare_parameter('standoff_distance', 0.15).value)
         self.min_nav2_standoff = float(
-            self.declare_parameter('min_nav2_standoff', 1.05).value)
+            self.declare_parameter('min_nav2_standoff', 0.15).value)
         self.external_detection_translation_x = float(
             self.declare_parameter('external_detection_translation_x', 0.0).value)
         self.external_detection_translation_y = float(
@@ -70,7 +70,7 @@ class RamIsBetter(Node):
 
         # Switch from Nav2 → visual servoing at this camera-frame Z distance.
         self.visual_takeover_distance = float(
-            self.declare_parameter('visual_takeover_distance', 1.20).value)
+            self.declare_parameter('visual_takeover_distance', 0.40).value)
 
         # Final approach distance for visual servoing (stop when this close).
         self.final_distance = float(
@@ -90,7 +90,11 @@ class RamIsBetter(Node):
         self.search_angular_speed = float(
             self.declare_parameter('search_angular_speed', 0.35).value)
         self.search_timeout = float(
-            self.declare_parameter('search_timeout', 4.0).value)
+            self.declare_parameter('search_timeout', 5.0).value)
+        self.visual_loss_wait = float(
+            self.declare_parameter('visual_loss_wait', 0.5).value)
+        self.post_nav_goal_recovery_delay = float(
+            self.declare_parameter('post_nav_goal_recovery_delay', 2.0).value)
         self.search_trigger_distance = float(
             self.declare_parameter('search_trigger_distance', 1.2).value)
         self.filter_alpha = float(
@@ -137,6 +141,8 @@ class RamIsBetter(Node):
         self.search_direction = 1.0
         self.last_marker_seen_time = 0.0
         self.last_seen_x_error = 0.0
+        self.visual_loss_start_time = 0.0
+        self.last_nav_goal_end_time = 0.0
 
         self.missing_marker_frames = 0
         self.recovery_mode = False
@@ -150,6 +156,7 @@ class RamIsBetter(Node):
         self.prev_filtered_yaw_error = None
         self.last_servo_time = None
         self.distance_integral = 0.0
+        self.docked = False
 
         # ── ROS interfaces ────────────────────────────────────────────────────
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
@@ -206,6 +213,8 @@ class RamIsBetter(Node):
                 rvec = rvecs[target_index][0]
                 self.last_marker_seen_time = time.time()
                 self.last_seen_x_error = float(tvec[0])
+                self.visual_loss_start_time = 0.0
+                self.last_nav_goal_end_time = 0.0
 
                 self.missing_marker_frames = 0
 
@@ -219,6 +228,7 @@ class RamIsBetter(Node):
 
                 if self.locked_id is None:
                     self.locked_id = marker_id
+                    self.docked = False
                     self.get_logger().info(f'Locked on to ArUco marker ID: {marker_id}')
 
                 if marker_id != self.locked_id:
@@ -272,30 +282,7 @@ class RamIsBetter(Node):
                         if self.should_start_search():
                             self.search_for_marker()
                             return
-                        if not self.recovery_mode:
-                            self.get_logger().info(
-                                f'Marker lost for {self.missing_marker_frames} frames — '
-                                'starting recovery.')
-                            self.recovery_mode = True
-                            self.recovery_start_time = time.time()
-
-                            if self.last_marker_map_data is not None:
-                                recovery_pose = self.calculate_target_pose(
-                                    self.last_marker_map_data)
-                                self.mode = 'recovery'
-                                self.send_navigation_goal(recovery_pose)
-                                self.get_logger().info(
-                                    f'Recovery → last marker pos: '
-                                    f'({recovery_pose.pose.position.x:.2f}, '
-                                    f'{recovery_pose.pose.position.y:.2f})')
-                            else:
-                                self.get_logger().warn(
-                                    'No stored marker position — resetting tracking.')
-                                self._reset_tracking()
-                        else:
-                            if time.time() - self.recovery_start_time > self.recovery_timeout:
-                                self.get_logger().warn('Recovery timeout — full reset.')
-                                self._reset_tracking()
+                        self.stop_robot()
 
             if self.show_debug_window:
                 cv2.imshow('RamIsBetter — ArUco Detection', frame)
@@ -466,18 +453,21 @@ class RamIsBetter(Node):
         )
 
         if aligned:
+            if not self.docked:
+                self.get_logger().info(
+                    f'Aligned with ArUco ID {self.locked_id}: '
+                    f'x={x_error:.3f}, z={tvec[2]:.3f}, yaw_err={yaw_error:.3f}')
+                trigger_msg = Bool()
+                trigger_msg.data = True
+                self.objA_trigger_pub.publish(trigger_msg)
+            self.docked = True
             self.stop_robot()
-            self.get_logger().info(
-                f'Aligned with ArUco ID {self.locked_id}: '
-                f'x={x_error:.3f}, z={tvec[2]:.3f}, yaw_err={yaw_error:.3f}')
-            trigger_msg = Bool()
-            trigger_msg.data = True
-            self.objA_trigger_pub.publish(trigger_msg)
             return
 
+        self.docked = False
         cmd = Twist()
         cmd.linear.x = self.linear_gain * distance_error
-        cmd.angular.z = -(
+        cmd.angular.z = (
             self.angular_gain_x * x_error
             + self.angular_gain_yaw * yaw_error
         )
@@ -551,6 +541,17 @@ class RamIsBetter(Node):
             self.get_logger().warn(f'Navigation goal ended with status={status}.')
         self.goal_active = False
         self.goal_handle = None
+        self.last_nav_goal_end_time = time.time()
+
+        if self.mode == 'nav2' and self.locked_id is not None and not self.marker_recently_seen():
+            self.mode = 'visual'
+            self.search_start_time = 0.0
+            self.visual_loss_start_time = 0.0
+            self.docked = False
+            self.stop_robot()
+            self.get_logger().info(
+                'Nav2 goal ended without a visible ArUco marker. '
+                f'Waiting {self.post_nav_goal_recovery_delay:.1f} s before recovery.')
 
     def cancel_navigation_goal(self):
         if self.goal_handle is not None:
@@ -563,14 +564,20 @@ class RamIsBetter(Node):
             return False
         if self.mode == 'search_reacquire':
             return True
-        if self.mode == 'nav2' and self.goal_active:
+        if self.mode == 'nav2':
             return False
-        robot_xy = self._get_robot_xy()
-        if robot_xy is None:
-            return self.mode in ('visual', 'recovery')
-        marker_xy = np.array(self.last_marker_map_data[0], dtype=float)
-        distance_to_marker = np.linalg.norm(marker_xy - robot_xy)
-        return distance_to_marker <= self.search_trigger_distance
+        if self.mode != 'visual':
+            return False
+        now = time.time()
+        if self.last_nav_goal_end_time > 0.0:
+            return (now - self.last_nav_goal_end_time) >= self.post_nav_goal_recovery_delay
+        if self.visual_loss_start_time == 0.0:
+            self.visual_loss_start_time = now
+            self.get_logger().info(
+                f'ArUco lost during visual align. Waiting up to '
+                f'{self.visual_loss_wait:.1f} s before recovery.')
+            return False
+        return (now - self.visual_loss_start_time) >= self.visual_loss_wait
 
     def search_for_marker(self):
         now = time.time()
@@ -580,11 +587,13 @@ class RamIsBetter(Node):
             self.search_direction = -1.0 if self.last_seen_x_error < 0.0 else 1.0
             self.cancel_navigation_goal()
             self.reset_servo_state()
+            self.docked = False
+            self.last_nav_goal_end_time = 0.0
             self.get_logger().info(
                 f'Searching for ArUco ID {self.locked_id} near last known pose.')
 
         if now - self.search_start_time > self.search_timeout:
-            self.mode = 'recovery'
+            self.mode = 'nav2'
             self.recovery_mode = True
             self.recovery_start_time = now
             self.stop_robot()
@@ -629,6 +638,11 @@ class RamIsBetter(Node):
     def normalize_angle(self, angle):
         return math.atan2(math.sin(angle), math.cos(angle))
 
+    def marker_recently_seen(self, timeout_sec=0.5):
+        if self.last_marker_seen_time <= 0.0:
+            return False
+        return (time.time() - self.last_marker_seen_time) <= timeout_sec
+
     def _publish_detected(self, state: bool):
         msg = Bool()
         msg.data = state
@@ -639,9 +653,12 @@ class RamIsBetter(Node):
         self.active_source_frame = None
         self.mode = 'search'
         self.recovery_mode = False
+        self.docked = False
         self.missing_marker_frames = 0
         self.last_marker_map_data = None
         self.search_start_time = 0.0
+        self.visual_loss_start_time = 0.0
+        self.last_nav_goal_end_time = 0.0
         self.cancel_navigation_goal()
         self.reset_servo_state()
         self.stop_robot()

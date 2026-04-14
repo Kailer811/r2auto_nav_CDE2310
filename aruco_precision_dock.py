@@ -37,7 +37,7 @@ class ArucoPrecisionDock(Node):
         self.angular_direction = float(
             self.declare_parameter('angular_direction', -1.0).value)
 
-        self.x_threshold = float(self.declare_parameter('x_threshold', 0.01).value)
+        self.x_threshold = float(self.declare_parameter('x_threshold', 0.2).value)
         self.realign_x_threshold = float(
             self.declare_parameter('realign_x_threshold', 0.025).value)
         self.distance_threshold = float(
