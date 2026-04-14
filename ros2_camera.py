@@ -44,7 +44,10 @@ class ArucoFollowerCompressed(Node):
                     x = tvecs[i][0][0]
                     z = tvecs[i][0][2]
                     distance_xz = np.sqrt(x**2 + z**2)
-                    self.get_logger().info(f"🎯 ID {marker_id} → X: {x:.2f}m, Z: {z:.2f}m, XZ Distance: {distance_xz:.2f}m")
+                    self.get_logger().info(
+                        f"ID {marker_id}: "
+                        f"X: {x:.2f}m, Z: {z:.2f}m"
+                    )
                 
                 cv2.aruco.drawDetectedMarkers(frame, corners)
                 cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[0], tvecs[0], 0.05)
