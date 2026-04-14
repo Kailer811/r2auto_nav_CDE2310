@@ -54,7 +54,7 @@ class RamIsBetter(Node):
         self.standoff_distance = float(
             self.declare_parameter('standoff_distance', 0.75).value)
         self.min_nav2_standoff = float(
-            self.declare_parameter('min_nav2_standoff', 0.15).value)
+            self.declare_parameter('min_nav2_standoff', 1.05).value)
         self.external_detection_translation_x = float(
             self.declare_parameter('external_detection_translation_x', 0.0).value)
         self.external_detection_translation_y = float(
@@ -70,7 +70,7 @@ class RamIsBetter(Node):
 
         # Switch from Nav2 → visual servoing at this camera-frame Z distance.
         self.visual_takeover_distance = float(
-            self.declare_parameter('visual_takeover_distance', 0.40).value)
+            self.declare_parameter('visual_takeover_distance', 1.20).value)
 
         # Final approach distance for visual servoing (stop when this close).
         self.final_distance = float(
