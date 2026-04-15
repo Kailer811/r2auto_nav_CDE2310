@@ -152,14 +152,14 @@ class ArucoStateMachine(Node):
                 )
 
             # Lock in the plan
-            self._plan_sequence(cam_x, cam_z, aruco_x, aruco_z, perp_yaw)
+            self._plan_sequence(aruco_x, aruco_z, perp_yaw)
 
         except Exception as e:
             self.get_logger().error(f"Image callback error: {e}")
 
     # ── Plan the full sequence from one snapshot ──────────────────────────────
 
-    def _plan_sequence(self, cam_x, cam_z, marker_x, marker_z, perp_yaw):
+    def _plan_sequence(self, marker_x, marker_z, perp_yaw):
         """
         From a single detection we derive:
           1. How much to rotate to be parallel to the marker face
