@@ -28,9 +28,9 @@ class ArucoPidDock(Node):
         self.secondary_marker_id = int(
             self.declare_parameter('secondary_marker_id', 4).value)
         self.marker_size = float(
-            self.declare_parameter('marker_size', 0.05).value)
+            self.declare_parameter('marker_size', 0.04).value)
         self.final_distance = float(
-            self.declare_parameter('final_distance', 0.2).value)
+            self.declare_parameter('final_distance', 0.05).value)
 
         self.linear_gain = float(self.declare_parameter('linear_gain', 4.0).value)
         self.angular_gain_x = float(self.declare_parameter('angular_gain_x', 4.0).value)
@@ -61,18 +61,12 @@ class ArucoPidDock(Node):
         self.show_debug_window = bool(
             self.declare_parameter('show_debug_window', True).value)
 
-        camera_matrix_default = [
-            1000.0, 0.0, 640.0,
-            0.0, 1000.0, 360.0,
-            0.0, 0.0, 1.0,
-        ]
-        dist_coeffs_default = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.camera_matrix = np.array(
-            self.declare_parameter('camera_matrix', camera_matrix_default).value,
-            dtype=float).reshape((3, 3))
-        self.dist_coeffs = np.array(
-            self.declare_parameter('dist_coeffs', dist_coeffs_default).value,
-            dtype=float).reshape((-1, 1))
+        self.camera_matrix = np.array([
+            [475, 0.0, 320],
+            [0.0, 475, 240],
+            [0.0, 0.0, 1.0]
+            ], dtype=float)
+        self.dist_coeffs = np.zeros((5,1))
 
         dictionary_name = str(
             self.declare_parameter('aruco_dictionary', 'DICT_4X4_50').value)
