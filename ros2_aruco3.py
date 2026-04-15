@@ -20,10 +20,11 @@ class State(Enum):
 
 
 # ── Tunable constants ──────────────────────────────────────────────────────────
-TARGET_Z        = 0.01   # metres — stop when this close to marker
+TARGET_Z        = 0.005   # metres — stop when this close to marker
 X_THRESH        = 0.02  # metres — acceptable X alignment error
 Z_THRESH        = 0.02  # metres — acceptable Z distance error
 ANGLE_THRESH    = 0.02  # radians — acceptable heading error (~1.7°)
+X_OFFSET        = 0.07
 
 LINEAR_SPEED    = 0.15  # m/s
 ANGULAR_SPEED   = 0.4   # rad/s
@@ -142,7 +143,10 @@ class ArucoStateMachine(Node):
                 )
                 cam_yaw = math.atan2(cam_x, cam_z)
                 aruco_yaw = math.atan2(aruco_z, aruco_x)
-                perp_yaw = cam_yaw + aruco_yaw
+                if aruco_yaw >= math.pi/2:
+                    perp_yaw = (cam_yaw + aruco_yaw) - math.pi
+                else:
+                    perp_yaw = cam_yaw + aruco_yaw
                 self.get_logger().info(
                     f"cam_yaw: {math.degrees(cam_yaw):.1f}° "
                     f"aruco_yaw: {math.degrees(aruco_yaw):.1f}° "
@@ -168,7 +172,7 @@ class ArucoStateMachine(Node):
         # Step 1: angle to be parallel = current yaw + marker_yaw_cam
         # (marker_yaw_cam == 0 means marker faces directly toward us → we are already parallel)
         self.target_yaw    = self.current_yaw - perp_yaw
-        self.target_x_dist = abs(marker_x)          # positive = move right
+        self.target_x_dist = abs(marker_x) + X_OFFSET         # positive = move right
         self.target_z_dist = marker_z - TARGET_Z  # how much z remains after approach
         if perp_yaw > 0:
             self.strafe_turn_sign = -1.0
@@ -208,7 +212,7 @@ class ArucoStateMachine(Node):
                 self.state = State.TURN_FACE
                 # Goal: turn 90° toward the marker
                 self.target_yaw = self.current_yaw - math.copysign(
-                    math.pi / 2,
+                    math.pi / 2.05,
                     self.target_x_dist * self.strafe_turn_sign  # ← apply fold correction
                 )
                 # If marker was to the right (positive x) we need to turn right (-90°)
