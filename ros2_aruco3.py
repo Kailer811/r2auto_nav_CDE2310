@@ -141,9 +141,7 @@ class ArucoStateMachine(Node):
                     f"arcuo_x: {aruco_x:.3f} m  aruco_z: {aruco_z:.3f} m  "
                 )
                 cam_yaw = math.atan2(cam_x, cam_z)
-                aruco_yaw = math.atan2(abs(aruco_z), aruco_x)
-                if aruco_yaw > math.pi/2:
-                    aruco_yaw = math.pi/2 - aruco_yaw
+                aruco_yaw = math.atan2(aruco_z, aruco_x)
                 perp_yaw = cam_yaw + aruco_yaw
                 self.get_logger().info(
                     f"cam_yaw: {math.degrees(cam_yaw):.1f}° "
@@ -170,7 +168,7 @@ class ArucoStateMachine(Node):
         # Step 1: angle to be parallel = current yaw + marker_yaw_cam
         # (marker_yaw_cam == 0 means marker faces directly toward us → we are already parallel)
         self.target_yaw    = self.current_yaw - perp_yaw
-        self.target_x_dist = -marker_x          # positive = move right
+        self.target_x_dist = abs(marker_x)          # positive = move right
         self.target_z_dist = marker_z - TARGET_Z  # how much z remains after approach
         if perp_yaw > 0:
             self.strafe_turn_sign = -1.0
