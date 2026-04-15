@@ -31,22 +31,22 @@ MAX_FRONTIER_GOALS_PER_CLUSTER = 4
 MAX_FRONTIER_CLUSTERS = 8
 BLOCKED_GOAL_COOLDOWN = 25.0
 BLOCKED_GOAL_RADIUS = 1
-PROGRESS_TIMEOUT = 15.0
+PROGRESS_TIMEOUT = 8.0
 MIN_PROGRESS_DISTANCE = 0.08
-PLANNER_PERIOD = 1.0
+PLANNER_PERIOD = 0.25
 STARTUP_TIMEOUT = 20.0
 GOAL_SEARCH_RADIUS = 8
 MAX_FRONTIER_APPROACH_RADIUS = 16
 FRONT_HALF_ANGLE_DEG = 18.0
 FRONT_STOP_DISTANCE = 0.12
-BLOCKED_RECOVERY_WAIT = 2.5
+BLOCKED_RECOVERY_WAIT = 1.0
 BACKUP_DURATION = 1.2
 BACKUP_SPEED = -0.08
 SEARCH_ROTATION_SPEED = 0.5
 SEARCH_ROTATION_TARGET = 2.0 * math.pi
 FRONTIER_FAILURE_TIMEOUT = PROGRESS_TIMEOUT
-POST_FRONTIER_SETTLE_TIME = 3.0
-NO_FRONTIER_CONFIRMATION_CYCLES = 3
+POST_FRONTIER_SETTLE_TIME = 1.0
+NO_FRONTIER_CONFIRMATION_CYCLES = 1
 
 # ── coverage constants ────────────────────────────────────────────────────
 # how many pooled cells around the robot count as "visited" each step
@@ -573,6 +573,27 @@ class AutoNav(Node):
         candidates.sort(key=lambda item: item[0])
         return candidates
 
+    def choose_reachable_frontier_goal(
+        self, candidates, tracking_cell, raw_grid, frontier_inflated_grid
+    ):
+        for _score, chosen_frontier, cluster_size in candidates:
+            goal_cell = self.select_standoff_goal(
+                chosen_frontier, tracking_cell, raw_grid, frontier_inflated_grid)
+            if goal_cell is None:
+                self.mark_frontier_blocked(chosen_frontier)
+                continue
+
+            path = astar(frontier_inflated_grid, tracking_cell, goal_cell)
+            if not path:
+                self.mark_frontier_blocked(chosen_frontier)
+                continue
+
+            path_length = self.path_length_cells(path)
+            goal_world = self.pooled_cell_to_world(goal_cell[0], goal_cell[1])
+            return goal_cell, goal_world, path_length, chosen_frontier, cluster_size
+
+        return None
+
     def stop_robot(self):
         twist = Twist()
         self.cmd_vel_pub.publish(twist)
@@ -708,14 +729,15 @@ class AutoNav(Node):
             self.log_status(
                 f'Frontier cells={total_frontiers} clusters={len(clusters)} candidates={len(candidates)}')
             if candidates:
-                _score, chosen_frontier, cluster_size = candidates[0]
-                self.get_logger().info(
-                    f'Choosing frontier row={chosen_frontier[0]} col={chosen_frontier[1]} '
-                    f'from cluster_size={cluster_size}.')
-                goal_world = self.pooled_cell_to_world(
-                    chosen_frontier[0], chosen_frontier[1])
-                path_length = heuristic(tracking_cell, chosen_frontier)
-                return chosen_frontier, goal_world, path_length, 'frontier', chosen_frontier
+                result = self.choose_reachable_frontier_goal(
+                    candidates, tracking_cell, raw_grid, frontier_inflated_grid)
+                if result is not None:
+                    goal_cell, goal_world, path_length, chosen_frontier, cluster_size = result
+                    self.get_logger().info(
+                        f'Choosing frontier row={chosen_frontier[0]} col={chosen_frontier[1]} '
+                        f'goal_row={goal_cell[0]} goal_col={goal_cell[1]} '
+                        f'from cluster_size={cluster_size}.')
+                    return goal_cell, goal_world, path_length, 'frontier', chosen_frontier
 
             self.get_logger().info(
                 'All detected frontiers have been exhausted or blacklisted. Switching to coverage.')

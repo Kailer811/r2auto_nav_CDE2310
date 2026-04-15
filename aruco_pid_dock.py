@@ -32,8 +32,8 @@ class ArucoPidDock(Node):
         self.final_distance = float(
             self.declare_parameter('final_distance', 0.2).value)
 
-        self.linear_gain = float(self.declare_parameter('linear_gain', 4.0).value)
-        self.angular_gain_x = float(self.declare_parameter('angular_gain_x', 4.0).value)
+        self.linear_gain = float(self.declare_parameter('linear_gain', 2.0).value)
+        self.angular_gain_x = float(self.declare_parameter('angular_gain_x', 1.5).value)
         self.angular_gain_yaw = float(self.declare_parameter('angular_gain_yaw', 0.5).value)
         self.angular_direction = float(
             self.declare_parameter('angular_direction', 1.0).value)
@@ -46,9 +46,7 @@ class ArucoPidDock(Node):
         self.search_angular_speed = float(
             self.declare_parameter('search_angular_speed', 0.35).value)
         self.recovery_delay = float(
-            self.declare_parameter('recovery_delay', 2.0).value)
-        self.loss_timeout = float(
-            self.declare_parameter('loss_timeout', 0.75).value)
+            self.declare_parameter('recovery_delay', 0.5).value)
 
         self.align_x_threshold = float(
             self.declare_parameter('align_x_threshold', 0.05).value)
@@ -96,6 +94,7 @@ class ArucoPidDock(Node):
         self.search_direction = 1.0
         self.docked = False
         self.docking_enabled = False
+        self.last_recovery_log_time = 0.0
 
         self.get_logger().info(
             'ArucoPidDock started. '
@@ -151,6 +150,7 @@ class ArucoPidDock(Node):
             self.get_logger().info(f'Locked on ArUco marker ID {marker_id}')
 
         self.last_seen_time = time.time()
+        self.has_detected_marker_once = True
         self.search_direction = (
             -1.0 if float(tvec[0]) < 0.0 else 1.0
         ) * self.search_direction_gain
@@ -206,7 +206,9 @@ class ArucoPidDock(Node):
         self.docked = False
         cmd = Twist()
         cmd.linear.x = self.linear_gain * distance_error
-        cmd.angular.z = self.angular_direction * (
+        # Positive tvec.x means the marker is to the camera's right, so the
+        # robot needs a negative angular.z correction to turn toward it.
+        cmd.angular.z = -self.angular_direction * (
             self.angular_gain_x * x_error
             + self.angular_gain_yaw * yaw_error
         )
@@ -233,13 +235,15 @@ class ArucoPidDock(Node):
             self.stop_robot()
         else:
             elapsed = time.time() - self.last_seen_time
-            search_elapsed = elapsed - self.recovery_delay
             if elapsed < self.recovery_delay:
                 self.stop_robot()
-            elif search_elapsed > self.loss_timeout:
-                self.docked = False
-                self.stop_robot()
             else:
+                now = time.time()
+                if now - self.last_recovery_log_time > 1.0:
+                    self.get_logger().warn(
+                        f'ArUco lost for {elapsed:.2f}s. Starting recovery search.')
+                    self.last_recovery_log_time = now
+                self.docked = False
                 self.publish_search_rotation()
 
         if self.show_debug_window:
