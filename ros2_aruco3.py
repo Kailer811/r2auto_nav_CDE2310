@@ -20,14 +20,14 @@ class State(Enum):
 
 
 # ── Tunable constants ──────────────────────────────────────────────────────────
-TARGET_Z        = 0.005   # metres — stop when this close to marker
+TARGET_Z        = 0.002   # metres — stop when this close to marker
 X_THRESH        = 0.02  # metres — acceptable X alignment error
 Z_THRESH        = 0.02  # metres — acceptable Z distance error
-ANGLE_THRESH    = 0.02  # radians — acceptable heading error (~1.7°)
-X_OFFSET        = 0.07
+ANGLE_THRESH    = 0.015  # radians — acceptable heading error (~1.7°)
+X_OFFSET        = 0.09
 
 LINEAR_SPEED    = 0.15  # m/s
-ANGULAR_SPEED   = 0.4   # rad/s
+ANGULAR_SPEED   = 0.3   # rad/s
 
 MARKER_SIZE     = 0.04  # metres — physical ArUco marker side length
 # ──────────────────────────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ class ArucoStateMachine(Node):
                 self.state = State.TURN_FACE
                 # Goal: turn 90° toward the marker
                 self.target_yaw = self.current_yaw - math.copysign(
-                    math.pi / 2.05,
+                    math.pi / 2.00,
                     self.target_x_dist * self.strafe_turn_sign  # ← apply fold correction
                 )
                 # If marker was to the right (positive x) we need to turn right (-90°)
