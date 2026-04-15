@@ -4,6 +4,7 @@ from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+import math
 
 class ArucoFollowerCompressed(Node):
     def __init__(self):
@@ -15,13 +16,13 @@ class ArucoFollowerCompressed(Node):
 
         # Replace these with your REAL calibrated values
         self.camera_matrix = np.array([
-            [1000.0, 0.0, 640.0],
-            [0.0, 1000.0, 360.0],
+            [475.0, 0.0, 320.0],
+            [0.0, 475.0, 240.0],
             [0.0, 0.0, 1.0]
         ], dtype=np.float64)
 
         self.dist_coeffs = np.zeros((5, 1), dtype=np.float64)
-        self.marker_size = 0.05  # meters
+        self.marker_size = 0.04  # meters
 
         self.subscription = self.create_subscription(
             CompressedImage,
@@ -64,11 +65,11 @@ class ArucoFollowerCompressed(Node):
 
                     x = float(cam_in_marker[0])
                     z = float(cam_in_marker[2])
-                    distance_xz = float(np.sqrt(x**2 + z**2))
+                    yaw = math.degrees(math.atan2(x, z))
 
                     self.get_logger().info(
                         f"ID {marker_id}: "
-                        f"X: {x:.2f} m, Z: {z:.2f} m" 
+                        f"X: {x:.2f} m, Z: {z:.2f} m, Yaw: {yaw:.2f} deg" 
                     )
 
                     cv2.drawFrameAxes(

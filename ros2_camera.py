@@ -14,9 +14,13 @@ class ArucoFollowerCompressed(Node):
         self.aruco_params = cv2.aruco.DetectorParameters_create()
         
         # Camera Matrix
-        self.camera_matrix = np.array([[1000, 0, 640], [0, 1000, 360], [0, 0, 1]], dtype=float)
+        self.camera_matrix = np.array([
+            [475, 0, 320], 
+            [0, 475, 240], 
+            [0, 0, 1]
+            ], dtype=float)
         self.dist_coeffs = np.zeros((5, 1))
-        self.marker_size = 0.05
+        self.marker_size = 0.04
 
         # Subscribe to COMPRESSED topic
         self.subscription = self.create_subscription(
@@ -46,7 +50,7 @@ class ArucoFollowerCompressed(Node):
                     distance_xz = np.sqrt(x**2 + z**2)
                     self.get_logger().info(
                         f"ID {marker_id}: "
-                        f"X: {x:.2f}m, Z: {z:.2f}m"
+                        f"X: {x:.2f}m, Z: {z:.2f}m, dist: {distance_xz:.2f}"
                     )
                 
                 cv2.aruco.drawDetectedMarkers(frame, corners)
