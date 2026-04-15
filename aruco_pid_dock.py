@@ -42,15 +42,13 @@ class ArucoPidDock(Node):
         self.max_linear_speed = float(
             self.declare_parameter('max_linear_speed', 0.20).value)
         self.max_angular_speed = float(
-            self.declare_parameter('max_angular_speed', 0.9).value)
+            self.declare_parameter('max_angular_speed', 0.9).value) 
         self.search_angular_speed = float(
             self.declare_parameter('search_angular_speed', 0.35).value)
+        self.recovery_delay = float(
+            self.declare_parameter('recovery_delay', 2.0).value)
         self.loss_timeout = float(
             self.declare_parameter('loss_timeout', 0.75).value)
-        self.stop_nav_loss_timeout = float(
-            self.declare_parameter('stop_nav_loss_timeout', 5.0).value)
-        self.stop_nav_post_dock_timeout = float(
-            self.declare_parameter('stop_nav_post_dock_timeout', 20.0).value)
 
         self.align_x_threshold = float(
             self.declare_parameter('align_x_threshold', 0.05).value)
@@ -78,7 +76,8 @@ class ArucoPidDock(Node):
         self.detected_pub = self.create_publisher(Bool, '/aruco_detected', 10)
         self.objA_trigger_pub = self.create_publisher(Bool, '/trigger_objA', 10)
         self.objB_trigger_pub = self.create_publisher(Bool, '/trigger_objB', 10)
-        self.stop_nav_pub = self.create_publisher(Bool, '/stop_nav', 10)
+        self.enable_docking_sub = self.create_subscription(
+            Bool, '/enable_docking', self.enable_docking_callback, 10)
         self.image_sub = self.create_subscription(
             CompressedImage,
             self.image_topic,
@@ -87,19 +86,29 @@ class ArucoPidDock(Node):
 
         self.locked_id = None
         self.last_seen_time = 0.0
+        self.has_detected_marker_once = False
         self.search_direction = 1.0
         self.docked = False
-        self.stop_nav_active = False
-        self.docked_at = 0.0
-
-        self.create_timer(0.1, self.watchdog_callback)
-        self.publish_stop_nav(False)
+        self.docking_enabled = False
 
         self.get_logger().info(
             'ArucoPidDock started. '
             f'primary_marker_id={self.primary_marker_id}, '
             f'secondary_marker_id={self.secondary_marker_id}, '
             f'final_distance={self.final_distance:.2f} m.')
+
+    def enable_docking_callback(self, msg):
+        enabled = bool(msg.data)
+        if enabled == self.docking_enabled:
+            return
+
+        self.docking_enabled = enabled
+        if self.docking_enabled:
+            self.get_logger().info('Docking control enabled.')
+            return
+
+        self.docked = False
+        self.get_logger().info('Docking control disabled.')
 
     def image_callback(self, msg):
         try:
@@ -140,12 +149,12 @@ class ArucoPidDock(Node):
             -1.0 if float(tvec[0]) < 0.0 else 1.0
         ) * self.search_direction_gain
         self.publish_detected(True)
-        self.publish_stop_nav(True)
         self.get_logger().info(
             f'ArUco ID {marker_id}: x={float(tvec[0]):.3f}, '
             f'y={float(tvec[1]):.3f}, z={float(tvec[2]):.3f}')
 
-        self.visual_servo_to_marker(tvec, rvec)
+        if self.docking_enabled:
+            self.visual_servo_to_marker(tvec, rvec)
 
         if self.show_debug_window:
             cv2.aruco.drawDetectedMarkers(frame, corners, ids)
@@ -184,7 +193,6 @@ class ArucoPidDock(Node):
                     self.objA_trigger_pub.publish(trigger_msg)
                 elif self.locked_id == self.secondary_marker_id:
                     self.objB_trigger_pub.publish(trigger_msg)
-                self.docked_at = time.time()
             self.docked = True
             self.stop_robot()
             return
@@ -204,7 +212,7 @@ class ArucoPidDock(Node):
                            -self.max_linear_speed)
         cmd.angular.z = max(min(cmd.angular.z, self.max_angular_speed),
                             -self.max_angular_speed)
-        self.cmd_vel_pub.publish(cmd)
+        self.publish_cmd(cmd)
         self.get_logger().debug(
             f'PID dock ID {self.locked_id}: '
             f'x_err={x_error:.3f}, dist_err={distance_error:.3f}, '
@@ -213,13 +221,16 @@ class ArucoPidDock(Node):
     def handle_marker_loss(self, frame):
         self.publish_detected(False)
 
-        if self.last_seen_time <= 0.0:
-            self.publish_search_rotation()
+        if not self.docking_enabled:
+            pass
+        elif not self.has_detected_marker_once:
+            self.stop_robot()
         else:
             elapsed = time.time() - self.last_seen_time
-            if elapsed > self.stop_nav_loss_timeout:
-                self.publish_stop_nav(False)
-            if elapsed > self.loss_timeout:
+            search_elapsed = elapsed - self.recovery_delay
+            if elapsed < self.recovery_delay:
+                self.stop_robot()
+            elif search_elapsed > self.loss_timeout:
                 self.docked = False
                 self.stop_robot()
             else:
@@ -232,24 +243,7 @@ class ArucoPidDock(Node):
     def publish_search_rotation(self):
         cmd = Twist()
         cmd.angular.z = self.search_direction * self.search_angular_speed
-        self.cmd_vel_pub.publish(cmd)
-
-    def watchdog_callback(self):
-        if self.last_seen_time <= 0.0:
-            self.publish_stop_nav(False)
-            return
-
-        elapsed = time.time() - self.last_seen_time
-        if elapsed > self.stop_nav_loss_timeout:
-            self.publish_stop_nav(False)
-        else:
-            self.publish_stop_nav(True)
-        if elapsed > self.loss_timeout:
-            self.docked = False
-            self.stop_robot()
-        if self.docked and self.docked_at > 0.0:
-            if time.time() - self.docked_at > self.stop_nav_post_dock_timeout:
-                self.publish_stop_nav(False)
+        self.publish_cmd(cmd)
 
     def select_target_marker(self, ids_flat, tvecs):
         if self.locked_id is not None:
@@ -272,13 +266,14 @@ class ArucoPidDock(Node):
         msg.data = bool(state)
         self.detected_pub.publish(msg)
 
-    def publish_stop_nav(self, state):
-        self.stop_nav_active = bool(state)
-        msg = Bool()
-        msg.data = self.stop_nav_active
-        self.stop_nav_pub.publish(msg)
+    def publish_cmd(self, cmd):
+        if not self.docking_enabled:
+            return
+        self.cmd_vel_pub.publish(cmd)
 
     def stop_robot(self):
+        if not self.docking_enabled:
+            return
         self.cmd_vel_pub.publish(Twist())
 
 
