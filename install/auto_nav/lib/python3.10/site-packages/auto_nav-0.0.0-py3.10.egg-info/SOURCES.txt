@@ -1,12 +1,14 @@
 package.xml
 setup.py
+./CDE2310 final run.py
 ./E2.py
-./KailerIsBetter.py
+./KaiIsBetter.py
 ./RamIsBetter.py
 ./__init__.py
+./aruco_nav_fsm.py
+./aruco_pid_dock.py
 ./aruco_precision_dock.py
 ./auto_nav2.py
-./docking_basic.py
 ./nav2_go_to_pose.py
 ./r2auto_nav.py
 ./r2mover.py
@@ -14,11 +16,15 @@ setup.py
 ./r2occupancy.py
 ./r2occupancy2.py
 ./r2scanner.py
-./ros2_Aruco.py
+./ros2_aruco.py
+./ros2_aruco2.py
+./ros2_aruco3.py
+./ros2_aruco4.py
 ./ros2_camera.py
 ./ros2_camera2.py
 ./ros2_nav.py
 ./ros2_navAruco.py
+./ros2_nav_kms.py
 ./servo_motor_run.py
 build/auto_nav/auto_nav.egg-info/PKG-INFO
 build/auto_nav/auto_nav.egg-info/SOURCES.txt

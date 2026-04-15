@@ -1,0 +1,74 @@
+[0.643s] Invoking command in '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav': PYTHONPATH=/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/auto_nav build --build-base /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build install --record /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log --single-version-externally-managed install_data
+[0.850s] running egg_info
+[0.851s] writing build/auto_nav/auto_nav.egg-info/PKG-INFO
+[0.851s] writing dependency_links to build/auto_nav/auto_nav.egg-info/dependency_links.txt
+[0.851s] writing entry points to build/auto_nav/auto_nav.egg-info/entry_points.txt
+[0.851s] writing requirements to build/auto_nav/auto_nav.egg-info/requires.txt
+[0.851s] writing top-level names to build/auto_nav/auto_nav.egg-info/top_level.txt
+[0.853s] reading manifest file 'build/auto_nav/auto_nav.egg-info/SOURCES.txt'
+[0.854s] writing manifest file 'build/auto_nav/auto_nav.egg-info/SOURCES.txt'
+[0.854s] running build
+[0.854s] running build_py
+[0.854s] copying ./ros2_aruco.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.854s] copying ./ros2_camera.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.854s] copying ./ros2_nav.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./aruco_pid_dock.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./aruco_nav_fsm.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./ros2_nav_kms.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./CDE2310 final run.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./KaiIsBetter.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./ros2_aruco4.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.855s] copying ./ros2_camera2.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.856s] copying ./ros2_aruco3.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.856s] copying ./ros2_aruco2.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav
+[0.856s] running install
+[0.857s] running install_lib
+[0.857s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_aruco.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.857s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_camera.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.857s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_nav.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/aruco_pid_dock.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/aruco_nav_fsm.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_nav_kms.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/CDE2310 final run.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/KaiIsBetter.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.858s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_aruco4.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.859s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_camera2.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.859s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_aruco3.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.859s] copying /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build/lib/auto_nav/ros2_aruco2.py -> /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav
+[0.860s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_aruco.py to ros2_aruco.cpython-310.pyc
+[0.861s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_camera.py to ros2_camera.cpython-310.pyc
+[0.861s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_nav.py to ros2_nav.cpython-310.pyc
+[0.866s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/aruco_pid_dock.py to aruco_pid_dock.cpython-310.pyc
+[0.868s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/aruco_nav_fsm.py to aruco_nav_fsm.cpython-310.pyc
+[0.868s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_nav_kms.py to ros2_nav_kms.cpython-310.pyc
+[0.872s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/CDE2310 final run.py to CDE2310 final run.cpython-310.pyc
+[0.877s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/KaiIsBetter.py to KaiIsBetter.cpython-310.pyc
+[0.879s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_aruco4.py to ros2_aruco4.cpython-310.pyc
+[0.881s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_camera2.py to ros2_camera2.cpython-310.pyc
+[0.881s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_aruco3.py to ros2_aruco3.cpython-310.pyc
+[0.882s] byte-compiling /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav/ros2_aruco2.py to ros2_aruco2.cpython-310.pyc
+[0.883s] running install_data
+[0.883s] running install_egg_info
+[0.885s] removing '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav-0.0.0-py3.10.egg-info' (and everything under it)
+[0.885s] Copying build/auto_nav/auto_nav.egg-info to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages/auto_nav-0.0.0-py3.10.egg-info
+[0.886s] running install_scripts
+[0.901s] Installing RamIsBetter script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.901s] Installing aruco_nav_fsm script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.901s] Installing aruco_node script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing aruco_pid_dock script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing aruco_precision_dock script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing auto_nav2 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing auto_nav_draft script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing nav2_go_to_pose script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing r2auto_nav script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing r2mover script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.902s] Installing r2moverotate script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing r2occupancy script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing r2occupancy2 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing r2scanner script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing ros2_aruco4 script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing ros2_nav script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing ros2_nav_aruco script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] Installing ros2_nav_kms script to /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/bin
+[0.903s] writing list of installed files to '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log'
+[0.927s] Invoked command in '/home/ramanathan/colcon_ws/src/auto_nav/auto_nav' returned '0': PYTHONPATH=/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ramanathan/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/auto_nav build --build-base /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build install --record /home/ramanathan/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log --single-version-externally-managed install_data
