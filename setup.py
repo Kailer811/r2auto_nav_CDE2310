@@ -37,7 +37,8 @@ setup(
             'aruco_pid_dock = auto_nav.aruco_pid_dock:main',
             'aruco_nav_fsm = auto_nav.aruco_nav_fsm:main',
             'ros2_nav = auto_nav.ros2_nav:main',
-            'ros2_nav_kms = auto_nav.ros2_nav_kms:main'
+            'ros2_nav_kms = auto_nav.ros2_nav_kms:main',
+            'ros2_aruco4 = auto_nav.ros2_aruco4:main'
         ],
     },
 )

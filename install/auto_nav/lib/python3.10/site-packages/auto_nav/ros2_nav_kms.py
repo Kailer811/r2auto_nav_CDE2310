@@ -23,7 +23,7 @@ from tf2_ros import TransformException
 UNKNOWN_VALUE = -1
 WALL_THRESHOLD = 20
 POOL_SIZE = 2
-WALL_INFLATION_RADIUS = 1
+WALL_INFLATION_RADIUS = 0
 FRONTIER_GOAL_INFLATION_RADIUS = 0
 MIN_FRONTIER_SIZE = 1
 MIN_FREE_CELLS_TO_PLAN = 20
@@ -31,19 +31,22 @@ MAX_FRONTIER_GOALS_PER_CLUSTER = 4
 MAX_FRONTIER_CLUSTERS = 8
 BLOCKED_GOAL_COOLDOWN = 25.0
 BLOCKED_GOAL_RADIUS = 1
-PROGRESS_TIMEOUT = 15.0
+PROGRESS_TIMEOUT = 8.0
 MIN_PROGRESS_DISTANCE = 0.08
-PLANNER_PERIOD = 1.0
+PLANNER_PERIOD = 0.25
 STARTUP_TIMEOUT = 20.0
 GOAL_SEARCH_RADIUS = 8
 MAX_FRONTIER_APPROACH_RADIUS = 16
 FRONT_HALF_ANGLE_DEG = 18.0
-FRONT_STOP_DISTANCE = 0.24
-BLOCKED_RECOVERY_WAIT = 2.5
+FRONT_STOP_DISTANCE = 0.12
+BLOCKED_RECOVERY_WAIT = 1.0
 BACKUP_DURATION = 1.2
 BACKUP_SPEED = -0.08
 SEARCH_ROTATION_SPEED = 0.5
 SEARCH_ROTATION_TARGET = 2.0 * math.pi
+FRONTIER_FAILURE_TIMEOUT = PROGRESS_TIMEOUT
+POST_FRONTIER_SETTLE_TIME = 1.0
+NO_FRONTIER_CONFIRMATION_CYCLES = 1
 
 # ── coverage constants ────────────────────────────────────────────────────
 # how many pooled cells around the robot count as "visited" each step
@@ -156,9 +159,13 @@ class AutoNav(Node):
         self.scan_angles = np.array([], dtype=float)
 
         self.current_goal_cell = None
+        self.current_frontier_cell = None
+        self.current_goal_mode = None
         self.goal_handle = None
         self.goal_in_flight = False
         self.blocked_goals = {}
+        self.last_frontier_goal_reached_time = 0.0
+        self.no_frontier_cycles = 0
         self.last_progress_time = time.time()
         self.last_progress_pose = None
         self.last_status_log_time = 0.0
@@ -469,7 +476,7 @@ class AutoNav(Node):
                     clusters.append(cluster)
 
         clusters.sort(key=len, reverse=True)
-        return clusters[:MAX_FRONTIER_CLUSTERS]
+        return clusters
 
     def prune_blocked_goals(self):
         now = time.time()
@@ -484,6 +491,17 @@ class AutoNav(Node):
         for d_row in range(-radius, radius+1):
             for d_col in range(-radius, radius+1):
                 self.blocked_goals[(row+d_row, col+d_col)] = blocked_at
+
+    def mark_frontier_blocked(self, frontier_cell):
+        if frontier_cell is None:
+            return
+        self.blocked_goals[frontier_cell] = time.time()
+
+    def block_current_target(self):
+        if self.current_goal_mode == 'frontier':
+            self.mark_frontier_blocked(self.current_frontier_cell)
+        elif self.current_goal_cell is not None:
+            self.mark_goal_region_blocked(self.current_goal_cell)
 
     def cluster_centroid(self, cluster):
         cr = sum(c[0] for c in cluster) / len(cluster)
@@ -533,106 +551,48 @@ class AutoNav(Node):
     def candidate_frontiers(self, clusters, robot_cell, _occupancy_grid):
         candidates = []
         for cluster in clusters:
-            valid = [c for c in cluster
-                     if c not in self.blocked_goals]
+            valid = [c for c in cluster if c not in self.blocked_goals]
             if not valid:
                 continue
+
             rep = self.cluster_centroid(valid)
-            ranked = sorted(valid, key=lambda c: (
-                abs(c[0]-rep[0])+abs(c[1]-rep[1]),
-                -heuristic(robot_cell, c),
+            best_cell = min(valid, key=lambda c: (
+                heuristic(c, rep),
+                heuristic(robot_cell, c),
+                c[0],
+                c[1],
             ))
-            for cell in ranked[:MAX_FRONTIER_GOALS_PER_CLUSTER]:
-                candidates.append(cell)
+            cluster_score = (
+                -len(valid),
+                heuristic(robot_cell, best_cell),
+                best_cell[0],
+                best_cell[1],
+            )
+            candidates.append((cluster_score, best_cell, len(valid)))
+
+        candidates.sort(key=lambda item: item[0])
         return candidates
 
-    def cell_touches_unknown(self, grid, cell):
-        row, col = cell
-        rows, cols = grid.shape
-        for d_row, d_col in EIGHT_CONNECTED_NEIGHBORS:
-            nr, nc = row + d_row, col + d_col
-            if 0 <= nr < rows and 0 <= nc < cols and grid[nr, nc] == 2:
-                return True
-        return False
+    def choose_reachable_frontier_goal(
+        self, candidates, tracking_cell, raw_grid, frontier_inflated_grid
+    ):
+        for _score, chosen_frontier, cluster_size in candidates:
+            goal_cell = self.select_standoff_goal(
+                chosen_frontier, tracking_cell, raw_grid, frontier_inflated_grid)
+            if goal_cell is None:
+                self.mark_frontier_blocked(chosen_frontier)
+                continue
 
-    def search_frontier_region_goal(self, frontier_cell, robot_cell, raw_grid):
-        fr, fc = frontier_cell
-        rows, cols = raw_grid.shape
-        best_goal = None
-        best_path = None
-        best_score = None
+            path = astar(frontier_inflated_grid, tracking_cell, goal_cell)
+            if not path:
+                self.mark_frontier_blocked(chosen_frontier)
+                continue
 
-        for radius in range(0, MAX_FRONTIER_APPROACH_RADIUS + 1):
-            row_min = max(0, fr - radius)
-            row_max = min(rows - 1, fr + radius)
-            col_min = max(0, fc - radius)
-            col_max = min(cols - 1, fc + radius)
+            path_length = self.path_length_cells(path)
+            goal_world = self.pooled_cell_to_world(goal_cell[0], goal_cell[1])
+            return goal_cell, goal_world, path_length, chosen_frontier, cluster_size
 
-            for row in range(row_min, row_max + 1):
-                for col in range(col_min, col_max + 1):
-                    if max(abs(row - fr), abs(col - fc)) != radius:
-                        continue
-                    if raw_grid[row, col] != 0:
-                        continue
-
-                    candidate = (row, col)
-                    path = astar(raw_grid, robot_cell, candidate)
-                    if not path:
-                        continue
-
-                    path_length = self.path_length_cells(path)
-                    score = (
-                        0 if self.cell_touches_unknown(raw_grid, candidate) else 1,
-                        abs(row - fr) + abs(col - fc),
-                        -self.clearance_score(raw_grid, row, col),
-                        path_length,
-                    )
-                    if best_score is None or score < best_score:
-                        best_score = score
-                        best_goal = candidate
-                        best_path = path
-
-            if best_goal is not None:
-                return best_goal, best_path
-
-        return None, None
-
-    def choose_frontier_goal(self, frontier_cell, robot_cell, raw_grid, frontier_inflated_grid):
-        goal_cell = self.select_standoff_goal(
-            frontier_cell, robot_cell, raw_grid, frontier_inflated_grid)
-        if goal_cell is not None:
-            path_cells = astar(frontier_inflated_grid, robot_cell, goal_cell)
-            if path_cells:
-                return goal_cell, path_cells
-
-        # Fallback: allow narrow passages by using the raw free-space grid for
-        # the frontier approach when the stricter frontier map finds no route.
-        goal_cell = self.select_standoff_goal(
-            frontier_cell, robot_cell, raw_grid, raw_grid)
-        if goal_cell is not None:
-            path_cells = astar(raw_grid, robot_cell, goal_cell)
-            if path_cells:
-                self.get_logger().info(
-                    f'Using narrow-gap frontier fallback for cell {frontier_cell}.')
-                return goal_cell, path_cells
-
-        # Final fallback: if a safe standoff cell cannot be found, try the
-        # frontier cell itself on the raw grid.
-        if raw_grid[frontier_cell] == 0:
-            path_cells = astar(raw_grid, robot_cell, frontier_cell)
-            if path_cells:
-                self.get_logger().info(
-                    f'Using direct frontier fallback for cell {frontier_cell}.')
-                return frontier_cell, path_cells
-
-        goal_cell, path_cells = self.search_frontier_region_goal(
-            frontier_cell, robot_cell, raw_grid)
-        if goal_cell is not None and path_cells is not None:
-            self.get_logger().info(
-                f'Using expanded frontier-region fallback for cell {frontier_cell}.')
-            return goal_cell, path_cells
-
-        return None, None
+        return None
 
     def stop_robot(self):
         twist = Twist()
@@ -751,10 +711,6 @@ class AutoNav(Node):
         if robot_cell is None:
             self.log_status('No goal: unable to snap robot pose to a safe planning cell.')
             return None
-        frontier_robot_cell = self.nearest_free_to_robot(
-            frontier_inflated_grid, tracking_cell, allow_traverse_occupied=True)
-        if frontier_robot_cell is None:
-            frontier_robot_cell = tracking_cell
 
         # mark where the robot currently is as visited
         self.mark_visited(tracking_cell, raw_grid.shape)
@@ -763,37 +719,40 @@ class AutoNav(Node):
         clusters = self.find_frontier_clusters(raw_grid)
 
         if clusters:
+            self.no_frontier_cycles = 0
             if self.coverage_mode:
                 self.get_logger().info('New frontiers found — back to frontier mode.')
                 self.coverage_mode = False
 
-            candidates = self.candidate_frontiers(
-                clusters, frontier_robot_cell, frontier_inflated_grid)
-            if not candidates:
-                candidates = self.candidate_frontiers(
-                    clusters, frontier_robot_cell, raw_grid)
+            candidates = self.candidate_frontiers(clusters, tracking_cell, raw_grid)
+            total_frontiers = sum(len(cluster) for cluster in clusters)
             self.log_status(
-                f'Frontier clusters={len(clusters)} candidates={len(candidates)}')
-            best_goal_cell = None
-            best_goal_world = None
-            best_path_length = float('inf')
+                f'Frontier cells={total_frontiers} clusters={len(clusters)} candidates={len(candidates)}')
+            if candidates:
+                result = self.choose_reachable_frontier_goal(
+                    candidates, tracking_cell, raw_grid, frontier_inflated_grid)
+                if result is not None:
+                    goal_cell, goal_world, path_length, chosen_frontier, cluster_size = result
+                    self.get_logger().info(
+                        f'Choosing frontier row={chosen_frontier[0]} col={chosen_frontier[1]} '
+                        f'goal_row={goal_cell[0]} goal_col={goal_cell[1]} '
+                        f'from cluster_size={cluster_size}.')
+                    return goal_cell, goal_world, path_length, 'frontier', chosen_frontier
 
-            for frontier_cell in candidates:
-                goal_cell, path_cells = self.choose_frontier_goal(
-                    frontier_cell, frontier_robot_cell, raw_grid, frontier_inflated_grid)
-                if goal_cell is None or path_cells is None:
-                    continue
-                path_length = self.path_length_cells(path_cells)
-                if path_length >= best_path_length:
-                    continue
-                best_goal_cell  = goal_cell
-                best_goal_world = self.pooled_cell_to_world(goal_cell[0], goal_cell[1])
-                best_path_length = path_length
+            self.get_logger().info(
+                'All detected frontiers have been exhausted or blacklisted. Switching to coverage.')
 
-            if best_goal_cell is not None:
-                return best_goal_cell, best_goal_world, best_path_length
+        time_since_frontier_success = time.time() - self.last_frontier_goal_reached_time
+        if time_since_frontier_success < POST_FRONTIER_SETTLE_TIME:
+            self.log_status(
+                f'No frontiers yet after frontier goal; waiting for map to settle '
+                f'({time_since_frontier_success:.1f}/{POST_FRONTIER_SETTLE_TIME:.1f}s)')
+            return None
 
-            self.log_status('Frontiers found but no reachable frontier goal selected.')
+        self.no_frontier_cycles += 1
+        if self.no_frontier_cycles < NO_FRONTIER_CONFIRMATION_CYCLES:
+            self.log_status(
+                f'No frontier confirmation {self.no_frontier_cycles}/{NO_FRONTIER_CONFIRMATION_CYCLES}')
             return None
 
         # ── Phase 2: coverage mode ────────────────────────────────────────
@@ -813,11 +772,15 @@ class AutoNav(Node):
                     f'Coverage complete! Unvisited cells remaining: {unvisited_count}')
             else:
                 self.log_status(f'Coverage: no reachable unvisited cells ({unvisited_count} remain)')
-        return result
+        if result is None:
+            return None
+
+        goal_cell, goal_world, path_length = result
+        return goal_cell, goal_world, path_length, 'coverage', None
 
     # ── nav2 goal sending ─────────────────────────────────────────────────
 
-    def send_nav_goal(self, goal_cell, goal_world, path_length):
+    def send_nav_goal(self, goal_cell, goal_world, path_length, mode='frontier', frontier_cell=None):
         if not self.nav_client.wait_for_server(timeout_sec=0.5):
             self.get_logger().warn('Nav2 action server not available.')
             return
@@ -832,13 +795,14 @@ class AutoNav(Node):
         goal_msg.pose.pose.orientation.w = 1.0
 
         self.current_goal_cell = goal_cell
+        self.current_goal_mode = mode
+        self.current_frontier_cell = frontier_cell if mode == 'frontier' else None
         self.goal_in_flight = True
 
         send_future = self.nav_client.send_goal_async(
             goal_msg, feedback_callback=self.feedback_callback)
         send_future.add_done_callback(self.goal_response_callback)
 
-        mode = 'coverage' if self.coverage_mode else 'frontier'
         self.get_logger().info(
             f'[{mode}] Goal row={goal_cell[0]} col={goal_cell[1]} '
             f'x={goal_x:.2f} y={goal_y:.2f} path={path_length:.1f} cells')
@@ -848,9 +812,10 @@ class AutoNav(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().warn('Nav2 rejected goal.')
-            if self.current_goal_cell is not None:
-                self.mark_goal_region_blocked(self.current_goal_cell)
+            self.block_current_target()
             self.current_goal_cell = None
+            self.current_frontier_cell = None
+            self.current_goal_mode = None
             self.goal_handle = None
             return
         if self.stop_nav_active or self.cancel_goal_on_accept:
@@ -859,6 +824,8 @@ class AutoNav(Node):
             goal_handle.cancel_goal_async()
             self.goal_handle = None
             self.current_goal_cell = None
+            self.current_frontier_cell = None
+            self.current_goal_mode = None
             self.front_blocked_since = None
             return
         self.goal_handle = goal_handle
@@ -871,13 +838,23 @@ class AutoNav(Node):
         status = result.status
         if status == 4:
             self.get_logger().info('Nav2 goal reached.')
+            if self.current_goal_mode == 'frontier':
+                self.last_frontier_goal_reached_time = time.time()
+                self.no_frontier_cycles = 0
             if self.coverage_mode:
                 self.start_search_rotation()
-        elif self.current_goal_cell is not None:
-            self.mark_goal_region_blocked(self.current_goal_cell)
-            self.get_logger().warn(f'Goal ended status={status}, blocking region.')
+        else:
+            self.block_current_target()
+            if self.current_goal_mode == 'frontier':
+                self.get_logger().warn(
+                    f'Frontier goal ended status={status}, blacklisting frontier {self.current_frontier_cell}.')
+            else:
+                self.get_logger().warn(
+                    f'Coverage goal ended status={status}, blocking region around {self.current_goal_cell}.')
         self.goal_handle = None
         self.current_goal_cell = None
+        self.current_frontier_cell = None
+        self.current_goal_mode = None
         self.goal_in_flight = False
         self.last_progress_pose = None
         self.last_progress_time = time.time()
@@ -904,11 +881,13 @@ class AutoNav(Node):
         if self.goal_handle is None:
             return
         self.get_logger().warn(f'Cancelling goal: {reason}')
-        if block_current_goal and self.current_goal_cell is not None:
-            self.mark_goal_region_blocked(self.current_goal_cell)
+        if block_current_goal:
+            self.block_current_target()
         self.goal_handle.cancel_goal_async()
         self.goal_handle = None
         self.current_goal_cell = None
+        self.current_frontier_cell = None
+        self.current_goal_mode = None
         self.goal_in_flight = False
         self.front_blocked_since = time.time()
 
@@ -952,8 +931,11 @@ class AutoNav(Node):
             return
 
         if self.goal_handle is not None:
-            if time.time() - self.last_progress_time > PROGRESS_TIMEOUT:
-                self.cancel_active_goal('no progress')
+            if time.time() - self.last_progress_time > FRONTIER_FAILURE_TIMEOUT:
+                if self.current_goal_mode == 'frontier':
+                    self.cancel_active_goal('frontier unreachable: no progress')
+                else:
+                    self.cancel_active_goal('no progress')
             return
 
         chosen_goal = self.choose_goal()
@@ -961,8 +943,9 @@ class AutoNav(Node):
             self.log_status('No goal available.')
             return
 
-        goal_cell, goal_world, path_length = chosen_goal
-        self.send_nav_goal(goal_cell, goal_world, path_length)
+        goal_cell, goal_world, path_length, goal_mode, frontier_cell = chosen_goal
+        self.send_nav_goal(
+            goal_cell, goal_world, path_length, mode=goal_mode, frontier_cell=frontier_cell)
 
 
 def main(args=None):

@@ -1,124 +1,266 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
-from cv_bridge import CvBridge
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
+from cv_bridge import CvBridge
 import cv2
 import numpy as np
+import math
+from enum import Enum, auto
 
-class ArucoFollowerCompressed(Node):
+
+class State(Enum):
+    SCANNING        = auto()  # Waiting for ArUco detection
+    PERPENDICULAR   = auto()
+    STRAFE_X        = auto()  # Drive forward/back to align X offset
+    TURN_FACE       = auto()  # Rotate 90° to face the marker
+    APPROACH_Z      = auto()  # Drive forward until Z ≈ TARGET_Z
+    DONE            = auto()
+
+
+# ── Tunable constants ──────────────────────────────────────────────────────────
+TARGET_Z        = 0.01   # metres — stop when this close to marker
+X_THRESH        = 0.02  # metres — acceptable X alignment error
+Z_THRESH        = 0.02  # metres — acceptable Z distance error
+ANGLE_THRESH    = 0.02  # radians — acceptable heading error (~1.7°)
+
+LINEAR_SPEED    = 0.15  # m/s
+ANGULAR_SPEED   = 0.4   # rad/s
+
+MARKER_SIZE     = 0.04  # metres — physical ArUco marker side length
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def yaw_from_quaternion(q):
+    """Extract yaw (rotation about Z) from a geometry_msgs Quaternion."""
+    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    return math.atan2(siny_cosp, cosy_cosp)
+
+
+def angle_diff(target, current):
+    """Smallest signed difference between two angles (radians)."""
+    d = target - current
+    while d >  math.pi: d -= 2 * math.pi
+    while d < -math.pi: d += 2 * math.pi
+    return d
+
+
+class ArucoStateMachine(Node):
+
     def __init__(self):
-        super().__init__('aruco_follower_compressed')
-        
-        self.bridge = CvBridge()
-        
-        # Modern OpenCV ArUco Setup
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        self.aruco_params = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
-        
-        # Camera Matrix - IMPORTANT: Ensure these match your actual camera resolution
-        # These values assume a roughly 640x480 resolution. 
-        self.camera_matrix = np.array([[800, 0, 320], [0, 800, 240], [0, 0, 1]], dtype=float)
-        self.dist_coeffs = np.zeros((5, 1))
-        self.marker_size = 0.05 # 5cm
+        super().__init__('aruco_state_machine')
 
-        self.subscription = self.create_subscription(
-            CompressedImage,
-            '/image_raw/compressed', 
-            self.image_callback,
-            10)
-        
+        # ── ArUco setup ──────────────────────────────────────────────────────
+        self.bridge       = CvBridge()
+        self.aruco_dict   = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        self.aruco_params = cv2.aruco.DetectorParameters_create()
+
+        # Replace with your real calibrated values
+        self.camera_matrix = np.array([
+            [475.0,    0.0, 320.0],
+            [   0.0, 475.0, 240.0],
+            [   0.0,    0.0,   1.0]
+        ], dtype=np.float64)
+        self.dist_coeffs = np.zeros((5, 1), dtype=np.float64)
+
+        # ── State ────────────────────────────────────────────────────────────
+        self.state            = State.SCANNING
+        self.current_yaw      = 0.0   # live odom yaw
+        self.target_yaw       = None  # goal heading for turn states
+        self.target_x_dist    = None  # signed X distance to drive
+        self.target_z_dist    = None  # Z distance remaining to cover
+        self.strafe_turn_sign = 1.0
+
+        # ── ROS interfaces ───────────────────────────────────────────────────
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
-        
-        # CONFIGURATION
-        self.target_distance = 0.30  # Stop 30cm away
-        self.target_x = 0.0         # Aim for center of image
-        
-        # GAINS (Tweak these!)
-        self.k_lin = 0.4   # Forward speed gain
-        self.k_ang = 1.2   # Rotational speed gain (higher = more aggressive turning)
-        
-        self.locked_id = None
-        self.get_logger().info("Aruco Follower Started - Looking for markers...")
+
+        self.create_subscription(
+            CompressedImage, '/image_raw/compressed',
+            self.image_callback, 10)
+
+        self.create_subscription(
+            Odometry, '/odom',
+            self.odom_callback, 10)
+
+        self.create_timer(0.05, self.control_loop)  # 20 Hz control loop
+
+        self.get_logger().info("ArUco state machine ready — scanning...")
+
+    # ── Odometry ─────────────────────────────────────────────────────────────
+
+    def odom_callback(self, msg):
+        self.current_yaw = yaw_from_quaternion(msg.pose.pose.orientation)
+
+    # ── Vision (only used in SCANNING) ───────────────────────────────────────
 
     def image_callback(self, msg):
+        if self.state != State.SCANNING:
+            return  # YOLO approach: ignore camera once we have a fix
+
         try:
-            # 1. Decode Image
             frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            corners, ids, _ = cv2.aruco.detectMarkers(
+                gray,
+                self.aruco_dict,
+                parameters=self.aruco_params
+            )
+
+            if ids is None or len(ids) == 0:
+                return
             
-            # 2. Detect Markers
-            corners, ids, _ = self.detector.detectMarkers(gray)
-            cmd = Twist()
+            rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                corners,
+                MARKER_SIZE,
+                self.camera_matrix,
+                self.dist_coeffs
+            )
+            cv2.aruco.drawDetectedMarkers(frame, corners)
+            for i, marker_id in enumerate(ids.flatten()):
+                rvec = rvecs[i]
+                tvec = tvecs[i][0]  # marker in camera frame
 
-            if ids is not None:
-                # Calculate pose for the first detected marker
-                # Note: estimatePoseSingleMarkers is deprecated in newer CV2, 
-                # but works for simple use cases.
-                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-                    corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
+                cam_x= float(tvec[0])   # left/right
+                cam_z = float(tvec[2])   # depth (forward)
+
+                # Convert marker->camera into camera->marker
+                R, _ = cv2.Rodrigues(rvec)
+                R_inv = R.T
+                cam_in_marker = -R_inv @ tvec
+                aruco_x = -float(cam_in_marker[0])
+                aruco_z = float(cam_in_marker[2])
                 
-                # Use the first marker found or implement your "locked_id" logic
-                idx = 0 
-                marker_id = ids[idx][0]
-                
-                # tvecs contains [x, y, z] where:
-                # x: left/right relative to camera center
-                # z: distance forward from camera
-                x_err = self.target_x - tvecs[idx][0][0]
-                z_err = tvecs[idx][0][2] - self.target_distance
+                self.get_logger().info(
+                    f"[SCAN] Marker detected —"
+                )
+                self.get_logger().info(
+                    f"cam_x: {cam_x:.3f} m  cam_z: {cam_z:.3f} m  "
+                    f"arcuo_x: {aruco_x:.3f} m  aruco_z: {aruco_z:.3f} m  "
+                )
+                cam_yaw = math.atan2(cam_x, cam_z)
+                aruco_yaw = math.atan2(abs(aruco_z), aruco_x)
+                if aruco_yaw > math.pi/2:
+                    aruco_yaw = math.pi/2 - aruco_yaw
+                perp_yaw = cam_yaw + aruco_yaw
+                self.get_logger().info(
+                    f"cam_yaw: {math.degrees(cam_yaw):.1f}° "
+                    f"aruco_yaw: {math.degrees(aruco_yaw):.1f}° "
+                    f"perp_yaw: {math.degrees(perp_yaw):.1f}° "
+                )
 
-                # 3. SMOOTH CONTROL LOGIC
-                # We move and turn AT THE SAME TIME for stability
-                
-                # Angular Control (Turning)
-                # If x is positive, marker is to the right, we need negative angular.z to turn right
-                cmd.angular.z = -self.k_ang * x_err
-                
-                # Linear Control (Forward/Backward)
-                # Only move forward if the error is significant
-                if abs(z_err) > 0.02:
-                    cmd.linear.x = self.k_lin * z_err
-                else:
-                    cmd.linear.x = 0.0
-
-                # 4. SAFETY LIMITS
-                cmd.linear.x = np.clip(cmd.linear.x, -0.2, 0.2)   # Max 0.2 m/s
-                cmd.angular.z = np.clip(cmd.angular.z, -1.0, 1.0) # Max 1.0 rad/s
-
-                # If very close, stop moving forward to avoid crashing
-                if tvecs[idx][0][2] < 0.10:
-                    cmd.linear.x = 0.0
-
-                self.cmd_pub.publish(cmd)
-                
-                # Draw on frame for debugging
-                cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-                cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvecs[idx], tvecs[idx], 0.03)
-
-            else:
-                # No marker found: STOP
-                self.cmd_pub.publish(Twist())
-
-            cv2.imshow("Follower Debug", frame)
-            cv2.waitKey(1)
+            # Lock in the plan
+            self._plan_sequence(cam_x, cam_z, aruco_x, aruco_z, perp_yaw)
 
         except Exception as e:
-            self.get_logger().error(f"Error: {e}")
+            self.get_logger().error(f"Image callback error: {e}")
+
+    # ── Plan the full sequence from one snapshot ──────────────────────────────
+
+    def _plan_sequence(self, cam_x, cam_z, marker_x, marker_z, perp_yaw):
+        """
+        From a single detection we derive:
+          1. How much to rotate to be parallel to the marker face
+          2. How far to drive sideways (X) to centre on the marker
+          3. A 90° turn to face the marker
+          4. How far to drive forward to reach TARGET_Z
+        """
+        # Step 1: angle to be parallel = current yaw + marker_yaw_cam
+        # (marker_yaw_cam == 0 means marker faces directly toward us → we are already parallel)
+        self.target_yaw    = self.current_yaw - perp_yaw
+        self.target_x_dist = -marker_x          # positive = move right
+        self.target_z_dist = marker_z - TARGET_Z  # how much z remains after approach
+        if perp_yaw > 0:
+            self.strafe_turn_sign = -1.0
+
+        self.state = State.PERPENDICULAR
+        self.get_logger().info(
+            f"target_yaw: {math.degrees(self.target_yaw):.1f}°  "
+            f"marker_x: {marker_x:.3f}  marker_z: {marker_z:.3f}"
+        )
+        
+       #self.get_logger().info(
+       #    f"[PLAN] turn_parallel → yaw {math.degrees(self.target_yaw):.1f}°  |  "
+       #    f"strafe_x {self.target_x_dist:.3f} m  |  "
+       #    f"approach_z remaining {self.target_z_dist:.3f} m"
+       #)
+
+    # ── Main control loop ─────────────────────────────────────────────────────
+
+    def control_loop(self):
+        cmd = Twist()
+
+        if self.state == State.SCANNING:
+            # Nothing to command — wait for camera callback
+            pass
+        elif self.state == State.PERPENDICULAR:
+            err = angle_diff(self.target_yaw, self.current_yaw)
+            if abs(err) < ANGLE_THRESH:
+                self.get_logger().info("[STATE] Perpendicular achieved → STRAFE_X")
+                self.state = State.STRAFE_X
+            else: 
+                cmd.angular.z = ANGULAR_SPEED * np.sign(err)
+        elif self.state == State.STRAFE_X:
+            # Drive along the robot's X axis (forward = local X when parallel)
+            # We use linear.x as the drive axis; the robot is now parallel to the marker
+            if abs(self.target_x_dist) < X_THRESH:
+                self.get_logger().info("[STATE] X aligned → TURN_FACE")
+                self.state = State.TURN_FACE
+                # Goal: turn 90° toward the marker
+                self.target_yaw = self.current_yaw - math.copysign(
+                    math.pi / 2,
+                    self.target_x_dist * self.strafe_turn_sign  # ← apply fold correction
+                )
+                # If marker was to the right (positive x) we need to turn right (-90°)
+                # If marker was to the left  (negative x) we turn left  (+90°)
+                # Adjust sign convention to match your robot's frame if needed
+            else:
+                direction = math.copysign(1.0, self.target_x_dist)
+                cmd.linear.x = LINEAR_SPEED * direction
+                # Consume distance (open-loop at 20 Hz → dt = 0.05 s)
+                self.target_x_dist -= LINEAR_SPEED * direction * 0.05
+
+        elif self.state == State.TURN_FACE:
+            err = angle_diff(self.target_yaw, self.current_yaw)
+            if abs(err) < ANGLE_THRESH:
+                self.get_logger().info("[STATE] Facing marker → APPROACH_Z")
+                self.state = State.APPROACH_Z
+            else:
+                cmd.angular.z = ANGULAR_SPEED * np.sign(err)
+
+        elif self.state == State.APPROACH_Z:
+            if self.target_z_dist <= Z_THRESH:
+                self.get_logger().info("[STATE] Reached target Z → DONE")
+                self.state = State.DONE
+            else:
+                cmd.linear.x = LINEAR_SPEED
+                self.target_z_dist -= LINEAR_SPEED * 0.05
+
+        elif self.state == State.DONE:
+            # All stop
+            self.get_logger().info("[DONE] Mission complete.", once=True)
+
+        self.cmd_pub.publish(cmd)
+
+    # ─────────────────────────────────────────────────────────────────────────
+
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ArucoFollowerCompressed()
+    node = ArucoStateMachine()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        node.cmd_pub.publish(Twist()) # Emergency stop
+        # Safety stop
+        node.cmd_pub.publish(Twist())
         node.destroy_node()
         rclpy.shutdown()
         cv2.destroyAllWindows()
+
 
 if __name__ == '__main__':
     main()
