@@ -1,262 +1,349 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist
-from cv_bridge import CvBridge
+#!/usr/bin/env python3
+
+import math
+import time
+from enum import Enum, auto
+
 import cv2
 import numpy as np
-import math
-from enum import Enum, auto
+import rclpy
+from cv_bridge import CvBridge
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool
 
 
 class State(Enum):
-    SCANNING        = auto()  # Waiting for ArUco detection
-    TURN_PARALLEL   = auto()  # Rotate to be parallel to the marker (yaw = marker yaw)
-    STRAFE_X        = auto()  # Drive forward/back to align X offset
-    TURN_FACE       = auto()  # Rotate 90° to face the marker
-    APPROACH_Z      = auto()  # Drive forward until Z ≈ TARGET_Z
-    DONE            = auto()
-
-
-# ── Tunable constants ──────────────────────────────────────────────────────────
-TARGET_Z        = 0.16   # metres — stop when this close to marker
-X_THRESH        = 0.05  # metres — acceptable X alignment error
-Z_THRESH        = 0.05  # metres — acceptable Z distance error
-ANGLE_THRESH    = 0.03  # radians — acceptable heading error (~1.7°)
-
-LINEAR_SPEED    = 0.15  # m/s
-ANGULAR_SPEED   = 0.4   # rad/s
-
-MARKER_SIZE     = 0.04  # metres — physical ArUco marker side length
-# ──────────────────────────────────────────────────────────────────────────────
+    SCANNING = auto()
+    PERPENDICULAR = auto()
+    STRAFE_X = auto()
+    TURN_FACE = auto()
+    APPROACH_Z = auto()
+    DONE = auto()
 
 
 def yaw_from_quaternion(q):
-    """Extract yaw (rotation about Z) from a geometry_msgs Quaternion."""
     siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
     cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
     return math.atan2(siny_cosp, cosy_cosp)
 
 
 def angle_diff(target, current):
-    """Smallest signed difference between two angles (radians)."""
-    d = target - current
-    while d >  math.pi: d -= 2 * math.pi
-    while d < -math.pi: d += 2 * math.pi
-    return d
+    delta = target - current
+    while delta > math.pi:
+        delta -= 2 * math.pi
+    while delta < -math.pi:
+        delta += 2 * math.pi
+    return delta
 
 
-class ArucoStateMachine(Node):
-
+class ArucoStateMachineFsm(Node):
     def __init__(self):
-        super().__init__('aruco_state_machine')
+        super().__init__('aruco_state_machine_fsm')
 
-        # ── ArUco setup ──────────────────────────────────────────────────────
-        self.bridge       = CvBridge()
-        self.aruco_dict   = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        self.bridge = CvBridge()
+
+        self.image_topic = self.declare_parameter(
+            'image_topic', '/image_raw/compressed').value
+        self.cmd_vel_topic = self.declare_parameter(
+            'cmd_vel_topic', 'cmd_vel').value
+        self.primary_marker_id = int(
+            self.declare_parameter('primary_marker_id', 2).value)
+        self.secondary_marker_id = int(
+            self.declare_parameter('secondary_marker_id', 4).value)
+        self.marker_size = float(
+            self.declare_parameter('marker_size', 0.04).value)
+
+        self.target_z = float(self.declare_parameter('target_z', 0.01).value)
+        self.x_thresh = float(self.declare_parameter('x_thresh', 0.02).value)
+        self.z_thresh = float(self.declare_parameter('z_thresh', 0.02).value)
+        self.angle_thresh = float(
+            self.declare_parameter('angle_thresh', 0.02).value)
+        self.linear_speed = float(
+            self.declare_parameter('linear_speed', 0.15).value)
+        self.angular_speed = float(
+            self.declare_parameter('angular_speed', 0.4).value)
+        self.search_angular_speed = float(
+            self.declare_parameter('search_angular_speed', 0.35).value)
+        self.search_direction_gain = float(
+            self.declare_parameter('search_direction_gain', 1.0).value)
+        self.recovery_delay = float(
+            self.declare_parameter('recovery_delay', 0.5).value)
+        self.show_debug_window = bool(
+            self.declare_parameter('show_debug_window', True).value)
+
+        dictionary_name = str(
+            self.declare_parameter('aruco_dictionary', 'DICT_4X4_50').value)
+        dictionary_id = getattr(cv2.aruco, dictionary_name, cv2.aruco.DICT_4X4_50)
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(dictionary_id)
         self.aruco_params = cv2.aruco.DetectorParameters_create()
 
-        # Replace with your real calibrated values
         self.camera_matrix = np.array([
-            [475.0,    0.0, 320.0],
-            [   0.0, 475.0, 240.0],
-            [   0.0,    0.0,   1.0]
+            [475.0, 0.0, 320.0],
+            [0.0, 475.0, 240.0],
+            [0.0, 0.0, 1.0],
         ], dtype=np.float64)
         self.dist_coeffs = np.zeros((5, 1), dtype=np.float64)
 
-        # ── State ────────────────────────────────────────────────────────────
-        self.state            = State.SCANNING
-        self.current_yaw      = 0.0   # live odom yaw
-        self.target_yaw       = None  # goal heading for turn states
-        self.target_x_dist    = None  # signed X distance to drive
-        self.target_z_dist    = None  # Z distance remaining to cover
+        self.state = State.SCANNING
+        self.current_yaw = 0.0
+        self.target_yaw = None
+        self.target_x_dist = None
+        self.target_z_dist = None
         self.strafe_turn_sign = 1.0
 
-        # ── ROS interfaces ───────────────────────────────────────────────────
-        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.locked_id = None
+        self.last_seen_time = 0.0
+        self.has_detected_marker_once = False
+        self.search_direction = 1.0
+        self.docked = False
+        self.docking_enabled = False
+        self.last_recovery_log_time = 0.0
+
+        self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.detected_pub = self.create_publisher(Bool, '/aruco_detected', 10)
+        self.objA_trigger_pub = self.create_publisher(Bool, '/trigger_objA', 10)
+        self.objB_trigger_pub = self.create_publisher(Bool, '/trigger_objB', 10)
 
         self.create_subscription(
-            CompressedImage, '/image_raw/compressed',
-            self.image_callback, 10)
-
+            CompressedImage, self.image_topic, self.image_callback, 10)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.create_subscription(
-            Odometry, '/odom',
-            self.odom_callback, 10)
+            Bool, '/enable_docking', self.enable_docking_callback, 10)
 
-        self.create_timer(0.05, self.control_loop)  # 20 Hz control loop
+        self.create_timer(0.05, self.control_loop)
 
-        self.get_logger().info("ArUco state machine ready — scanning...")
+        self.get_logger().info(
+            'ros2_aruco4 ready. '
+            f'primary_marker_id={self.primary_marker_id}, '
+            f'secondary_marker_id={self.secondary_marker_id}')
 
-    # ── Odometry ─────────────────────────────────────────────────────────────
+    def enable_docking_callback(self, msg):
+        enabled = bool(msg.data)
+        if enabled == self.docking_enabled:
+            return
+
+        self.docking_enabled = enabled
+        if enabled:
+            self.reset_tracking_state()
+            self.get_logger().info('Docking control enabled.')
+            return
+
+        self.get_logger().info('Docking control disabled.')
+        self.reset_tracking_state()
+        self.cmd_pub.publish(Twist())
+
+    def reset_tracking_state(self):
+        self.state = State.SCANNING
+        self.target_yaw = None
+        self.target_x_dist = None
+        self.target_z_dist = None
+        self.strafe_turn_sign = 1.0
+        self.locked_id = None
+        self.has_detected_marker_once = False
+        self.docked = False
 
     def odom_callback(self, msg):
         self.current_yaw = yaw_from_quaternion(msg.pose.pose.orientation)
 
-    # ── Vision (only used in SCANNING) ───────────────────────────────────────
-
     def image_callback(self, msg):
-        if self.state != State.SCANNING:
-            return  # YOLO approach: ignore camera once we have a fix
-
         try:
-            frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frame = self.bridge.compressed_imgmsg_to_cv2(
+                msg, desired_encoding='bgr8')
+        except Exception as exc:
+            self.get_logger().error(f'Image callback error: {exc}')
+            return
 
-            corners, ids, _ = cv2.aruco.detectMarkers(
-                gray, self.aruco_dict, parameters=self.aruco_params)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        corners, ids, _ = cv2.aruco.detectMarkers(
+            gray, self.aruco_dict, parameters=self.aruco_params)
 
-            if ids is None or len(ids) == 0:
-                return
+        if ids is None or len(ids) == 0:
+            self.handle_marker_loss(frame)
+            return
 
-            rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-                corners, MARKER_SIZE, self.camera_matrix, self.dist_coeffs)
+        rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+            corners, self.marker_size, self.camera_matrix, self.dist_coeffs)
+        ids_flat = ids.flatten().astype(int)
+        target_index = self.select_target_marker(ids_flat, tvecs)
+        if target_index is None:
+            self.handle_marker_loss(frame)
+            return
 
-            # Use first detected marker
-            rvec = rvecs[0]
-            tvec = tvecs[0][0]
+        marker_id = int(ids_flat[target_index])
+        rvec = rvecs[target_index]
+        tvec = tvecs[target_index][0]
 
-            # --- Marker pose in camera frame ---
-            # tvec = [x, y, z] of marker relative to camera
-            marker_x = float(tvec[0])   # left/right
-            marker_z = float(tvec[2])   # depth (forward)
+        self.last_seen_time = time.time()
+        self.has_detected_marker_once = True
+        self.search_direction = (
+            -1.0 if float(tvec[0]) < 0.0 else 1.0
+        ) * self.search_direction_gain
+        self.publish_detected(True)
 
-            # --- Marker yaw relative to camera ---
-            R, _ = cv2.Rodrigues(rvec)
-            #R_inv = R.T
-            #cam_in_marker = -R_inv @ tvec
-            #x = float(cam_in_marker[0])
-            #z = float(cam_in_marker[2])
-            # The marker's forward axis (its Z) projected onto the ground plane
-            marker_forward = R[:, 2]  # third column
-            marker_yaw_cam = math.atan2(marker_forward[0], marker_forward[2])
+        if self.locked_id != marker_id:
+            self.locked_id = marker_id
+            self.docked = False
+            self.get_logger().info(f'Locked on ArUco marker ID {marker_id}')
 
-            self.get_logger().info(
-                f"[SCAN] Marker detected — "
-                f"X: {marker_x:.3f} m  Z: {marker_z:.3f} m  "
-                f"yaw_rel: {math.degrees(marker_yaw_cam):.1f}°"
-            )
+        if self.docking_enabled and self.state == State.SCANNING:
+            self.plan_from_detection(rvec, tvec)
 
-            # Lock in the plan
-            self._plan_sequence(marker_x, marker_z, marker_yaw_cam)
+        if self.show_debug_window:
+            cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+            cv2.drawFrameAxes(
+                frame, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.05)
+            cv2.imshow('ros2_aruco4', frame)
+            cv2.waitKey(1)
 
-        except Exception as e:
-            self.get_logger().error(f"Image callback error: {e}")
+    def select_target_marker(self, ids_flat, tvecs):
+        if self.locked_id is not None:
+            matches = np.where(ids_flat == self.locked_id)[0]
+            if len(matches) == 0:
+                return None
+            return min(matches, key=lambda i: float(tvecs[i][0][2]))
 
-    # ── Plan the full sequence from one snapshot ──────────────────────────────
+        primary_matches = np.where(ids_flat == self.primary_marker_id)[0]
+        secondary_matches = np.where(ids_flat == self.secondary_marker_id)[0]
+        if len(primary_matches) > 0:
+            return min(primary_matches, key=lambda i: float(tvecs[i][0][2]))
+        if len(secondary_matches) > 0:
+            return min(secondary_matches, key=lambda i: float(tvecs[i][0][2]))
+        return None
 
-    def _plan_sequence(self, marker_x, marker_z, marker_yaw_cam):
-        """
-        From a single detection we derive:
-          1. How much to rotate to be parallel to the marker face
-          2. How far to drive sideways (X) to centre on the marker
-          3. A 90° turn to face the marker
-          4. How far to drive forward to reach TARGET_Z
-        """
-        # Step 1: angle to be parallel = current yaw + marker_yaw_cam
-        # (marker_yaw_cam == 0 means marker faces directly toward us → we are already parallel)
-        folded = False
-        if marker_yaw_cam > math.pi / 2:
-            marker_yaw_cam -= math.pi
-            folded = True
-        elif marker_yaw_cam < -math.pi / 2:
-            marker_yaw_cam += math.pi
-            folded = True
+    def plan_from_detection(self, rvec, tvec):
+        cam_x = float(tvec[0])
+        cam_z = float(tvec[2])
 
-        self.target_yaw   = self.current_yaw + marker_yaw_cam
-        self.target_x_dist = -marker_x          # positive = move right
-        self.target_z_dist = marker_z - TARGET_Z  # how much z remains after approach
+        rotation, _ = cv2.Rodrigues(rvec)
+        rotation_inv = rotation.T
+        cam_in_marker = -rotation_inv @ tvec
+        marker_x = -float(cam_in_marker[0])
+        marker_z = float(cam_in_marker[2])
 
-        self.strafe_turn_sign = -1.0 if folded else 1.0
+        cam_yaw = math.atan2(cam_x, cam_z)
+        marker_yaw = math.atan2(abs(marker_z), marker_x)
+        if marker_yaw > math.pi / 2:
+            marker_yaw = math.pi / 2 - marker_yaw
+        perp_yaw = cam_yaw + marker_yaw
 
-        self.state = State.TURN_PARALLEL
+        self.target_yaw = self.current_yaw - perp_yaw
+        self.target_x_dist = -marker_x
+        self.target_z_dist = marker_z - self.target_z
+        self.strafe_turn_sign = -1.0 if perp_yaw > 0.0 else 1.0
+        self.state = State.PERPENDICULAR
+
         self.get_logger().info(
-            f"current_yaw: {math.degrees(self.current_yaw):.1f}°  "
-            f"marker_yaw_cam: {math.degrees(marker_yaw_cam):.1f}°  "
-            f"target_yaw: {math.degrees(self.target_yaw):.1f}°  "
-            f"marker_x: {marker_x:.3f}  marker_z: {marker_z:.3f}"
-        )
-        self.get_logger().info(
-            f"[PLAN] turn_parallel → yaw {math.degrees(self.target_yaw):.1f}°  |  "
-            f"strafe_x {self.target_x_dist:.3f} m  |  "
-            f"approach_z remaining {self.target_z_dist:.3f} m"
-        )
+            f'[PLAN] id={self.locked_id} cam_x={cam_x:.3f} cam_z={cam_z:.3f} '
+            f'marker_x={marker_x:.3f} marker_z={marker_z:.3f} '
+            f'perp_yaw={math.degrees(perp_yaw):.1f}deg')
 
-    # ── Main control loop ─────────────────────────────────────────────────────
+    def handle_marker_loss(self, frame):
+        self.publish_detected(False)
+
+        if not self.docking_enabled:
+            pass
+        elif not self.has_detected_marker_once:
+            self.cmd_pub.publish(Twist())
+        else:
+            elapsed = time.time() - self.last_seen_time
+            if elapsed < self.recovery_delay:
+                self.cmd_pub.publish(Twist())
+            else:
+                if time.time() - self.last_recovery_log_time > 1.0:
+                    self.get_logger().warn(
+                        f'ArUco lost for {elapsed:.2f}s. Starting recovery search.')
+                    self.last_recovery_log_time = time.time()
+                self.state = State.SCANNING
+                self.docked = False
+                cmd = Twist()
+                cmd.angular.z = self.search_direction * self.search_angular_speed
+                self.publish_cmd(cmd)
+
+        if self.show_debug_window:
+            cv2.imshow('ros2_aruco4', frame)
+            cv2.waitKey(1)
 
     def control_loop(self):
         cmd = Twist()
 
-        if self.state == State.SCANNING:
-            # Nothing to command — wait for camera callback
-            pass
+        if not self.docking_enabled:
+            return
 
-        elif self.state == State.TURN_PARALLEL:
+        if self.state == State.SCANNING:
+            pass
+        elif self.state == State.PERPENDICULAR:
             err = angle_diff(self.target_yaw, self.current_yaw)
-            if abs(err) < ANGLE_THRESH:
-                self.get_logger().info("[STATE] Parallel achieved → STRAFE_X")
+            if abs(err) < self.angle_thresh:
+                self.get_logger().info('[STATE] Perpendicular achieved -> STRAFE_X')
                 self.state = State.STRAFE_X
             else:
-                cmd.angular.z = ANGULAR_SPEED * np.sign(err)
-
+                cmd.angular.z = self.angular_speed * np.sign(err)
         elif self.state == State.STRAFE_X:
-            # Drive along the robot's X axis (forward = local X when parallel)
-            # We use linear.x as the drive axis; the robot is now parallel to the marker
-            if abs(self.target_x_dist) < X_THRESH:
-                self.get_logger().info("[STATE] X aligned → TURN_FACE")
+            if abs(self.target_x_dist) < self.x_thresh:
+                self.get_logger().info('[STATE] X aligned -> TURN_FACE')
                 self.state = State.TURN_FACE
-                # Goal: turn 90° toward the marker
                 self.target_yaw = self.current_yaw - math.copysign(
-                    math.pi / 2,
-                    self.target_x_dist * self.strafe_turn_sign  # ← apply fold correction
-                )
-                # If marker was to the right (positive x) we need to turn right (-90°)
-                # If marker was to the left  (negative x) we turn left  (+90°)
-                # Adjust sign convention to match your robot's frame if needed
+                    math.pi / 2, self.target_x_dist * self.strafe_turn_sign)
             else:
                 direction = math.copysign(1.0, self.target_x_dist)
-                cmd.linear.x = LINEAR_SPEED * direction
-                # Consume distance (open-loop at 20 Hz → dt = 0.05 s)
-                self.target_x_dist -= LINEAR_SPEED * direction * 0.05
-
+                cmd.linear.x = self.linear_speed * direction
+                self.target_x_dist -= self.linear_speed * direction * 0.05
         elif self.state == State.TURN_FACE:
             err = angle_diff(self.target_yaw, self.current_yaw)
-            if abs(err) < ANGLE_THRESH:
-                self.get_logger().info("[STATE] Facing marker → APPROACH_Z")
+            if abs(err) < self.angle_thresh:
+                self.get_logger().info('[STATE] Facing marker -> APPROACH_Z')
                 self.state = State.APPROACH_Z
             else:
-                cmd.angular.z = ANGULAR_SPEED * np.sign(err)
-
+                cmd.angular.z = self.angular_speed * np.sign(err)
         elif self.state == State.APPROACH_Z:
-            if self.target_z_dist <= Z_THRESH:
-                self.get_logger().info("[STATE] Reached target Z → DONE")
+            if self.target_z_dist <= self.z_thresh:
+                self.get_logger().info('[STATE] Reached target Z -> DONE')
                 self.state = State.DONE
             else:
-                cmd.linear.x = LINEAR_SPEED
-                self.target_z_dist -= LINEAR_SPEED * 0.05
-
+                cmd.linear.x = self.linear_speed
+                self.target_z_dist -= self.linear_speed * 0.05
         elif self.state == State.DONE:
-            # All stop
-            self.get_logger().info("[DONE] Mission complete.", once=True)
+            if not self.docked:
+                self.get_logger().info(f'[DONE] Docked with ArUco ID {self.locked_id}')
+                trigger_msg = Bool()
+                trigger_msg.data = True
+                if self.locked_id == self.primary_marker_id:
+                    self.objA_trigger_pub.publish(trigger_msg)
+                elif self.locked_id == self.secondary_marker_id:
+                    self.objB_trigger_pub.publish(trigger_msg)
+                self.docked = True
 
+        self.publish_cmd(cmd)
+
+    def publish_detected(self, state):
+        msg = Bool()
+        msg.data = bool(state)
+        self.detected_pub.publish(msg)
+
+    def publish_cmd(self, cmd):
+        if not self.docking_enabled:
+            return
         self.cmd_pub.publish(cmd)
-
-    # ─────────────────────────────────────────────────────────────────────────
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ArucoStateMachine()
+    node = ArucoStateMachineFsm()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        # Safety stop
         node.cmd_pub.publish(Twist())
         node.destroy_node()
         rclpy.shutdown()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
