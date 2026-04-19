@@ -7,9 +7,9 @@
 - [Project Overview](#-project-overview)
 - [Repository Structure](#-repository-structure)
 - [System Architecture](#-system-architecture)
-  - [Mechanical Subsystem](#1-mechanical-subsystem)
-  - [Electrical Subsystem](#2-electrical-subsystem)
-  - [Software Subsystem](#3-software-subsystem)
+  - Mechanical Subsystem
+  - Electrical Subsystem
+  - Software Subsystem
 - [Team Members](#-team-members)
 
 ---
@@ -40,3 +40,38 @@ r2auto_nav_CDE2310/
 ├── End_User_documentation.pdf                      # End-user documentation and test reports
 │
 └── README.md
+```
+---
+
+## System Architecture
+
+### 1. Mechanical Subsystem
+Built upon the Turtlebot3 chassis, we design folloing 3D printed part to complete the mission and store maximum 9 ping pong balls:
+
+- **Launcher Assembly:** Customize the bracket for DC motor (flywheel), payload reservoir, and servo motor bracket. 
+- **Sensor Mount:** Design the bracket for ultrasonic sensor. 
+
+### 2. Electrical Subsystem
+The electrical system ensures the communication between sensing and control nodes. It also ensures the stability of launching:
+
+- **Controllers:** Raspberry Pi 4 (High-level computing) + OpenCR 1.0 (Low-level actuation).
+- **Motor Control:** Flywheel is controlled by the MOSFET circuit whose gate is connected to Raspbeery Pi GPIO. 
+
+### 3. Software Subsystem
+The software architecture is built on ROS2 Humble, utilizing a highly decoupled publish and subscribe modular design:
+
+- **SLAM Node:** Integrate LiDAR and odometry data to construct real time occupancy grid map. 
+- **Exploration Node:** Automatically generates waypoints based on map frontiers for continuous exploration.
+- **Visio Node:** Rpi camera identifying the Aruco, and calculate the relative trasnlation vector
+- **Mission Manager (FSM):** Transition between "Exploration", "Docking", and "Delivery".
+
+---
+
+## Team Member
+- **Amber (YUCHEN):** Electrical subsystem design and launching testing.
+
+- **Jon (Jonathan):** Mechanical subsystem design and mechanical assembly.
+
+- **Ethan (Kai Ler):** Software subsystem design and docking mechanism.
+
+- **Ram (Ramanathan):** Software subsystem design and exploration algorithm.
