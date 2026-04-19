@@ -79,4 +79,4 @@ The software architecture is built on ROS2 Humble, utilizing a highly decoupled 
 ---
 
 ## Mission Recording
-Please refer to this link to check the Rviz screen recording: [![AMR Navigation and Payload Deployment](https://img.youtube.com/vi/lXcatRy6V4A/maxresdefault.jpg)](https://www.youtube.com/watch?v=lXcatRy6V4A)
+Please refer to this link to check the Rviz screen recording: [![Final Run Video](https://img.youtube.com/vi/lXcatRy6V4A/maxresdefault.jpg)](https://www.youtube.com/watch?v=lXcatRy6V4A)
