@@ -16,7 +16,7 @@ Besides the electrical components that Turtlebot3 Burger provides (LiDAR, Raspbe
 
 All the power supply of the components listed in the table need to be connected to 5V, and the ground should be connected to the common GND on Raspberry Pi to ensure the system has the same grounding reference point. 
 
-There is a "Flywheel control circuit" under Schematic Diagram for Electrical Design.png. This circuit is the key circuit to control the on and off of the flywheel. 
+There is a "Flywheel control circuit" in the [`Schematic Diagram for Electrical Design.png`](SchematicDiagram_for_Electrical_Design.png) . This circuit is the key circuit to control the on and off of the flywheel. 
 
 For the testing, there are two testing pyton files. The [`static_launching_testing.py`](./static_launching_testing.py) is meant for the static target. Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, servo motor feeds one ball at a time and three balls in total, and the timing required is correct. 
 
