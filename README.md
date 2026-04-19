@@ -4,9 +4,9 @@
 
 
 ## Table of Contents
-- [Project Overview](#-project-overview)
-- [Repository Structure](#-repository-structure)
-- [System Architecture](#-system-architecture)
+- Project Overview
+- Repository Structure
+- System Architecture
   - Mechanical Subsystem
   - Electrical Subsystem
   - Software Subsystem
