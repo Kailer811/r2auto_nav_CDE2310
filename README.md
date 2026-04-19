@@ -11,7 +11,7 @@
   - Electrical Subsystem
   - Software Subsystem
 - Team Members
-
+- Mission Recording
 ---
 
 ## Project Overview
@@ -75,3 +75,8 @@ The software architecture is built on ROS2 Humble, utilizing a highly decoupled 
 - **Ethan (Kai Ler):** Software subsystem design and docking mechanism.
 
 - **Ram (Ramanathan):** Software subsystem design and exploration algorithm.
+
+---
+
+## Mission Recording
+Please refer to this link to check the Rviz screen recording: 
