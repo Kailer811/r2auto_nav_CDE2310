@@ -18,3 +18,5 @@ There is a "Flywheel control circuit" under Schematic Diagram for Electrical Des
 For the testing, there are two testing pyton files. The [`static_launching_testing.py`](./static_launching_testing.py) is meant for the static target. Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, servo motor feeds one ball at a time and three balls in total, and the timing required is correct. 
 
 For dynamic (moving) target, run [`dynamic_launching_testing.py`](./dynamic_launching_testing.py). Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, ultrasonic sensor detects the moving target in time, and servo motor feeds the ball immediately when there is an object between 17 to 23 centimeters. 
+
+These two files are for testing only, for the final mission, files are to modify to fit the navigation and docking files such that the turtlebot can detect the station when it senses the Aruco, move to directly face the target, and then return to navigation mode once all balls are launched. 
