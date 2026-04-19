@@ -10,8 +10,6 @@
   - [Mechanical Subsystem](#1-mechanical-subsystem)
   - [Electrical Subsystem](#2-electrical-subsystem)
   - [Software Subsystem](#3-software-subsystem)
-- [Getting Started](#-getting-started)
-- [Documentation & Reports](#-documentation--reports)
 - [Team Members](#-team-members)
 
 ---
