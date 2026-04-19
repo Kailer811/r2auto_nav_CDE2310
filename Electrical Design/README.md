@@ -3,6 +3,7 @@
 This readme has highlighted the connections between the electrical components in the design including the specific pinout and destination. 
 
 Besides the electrical components that Turtlebot3 Burger provides (LiDAR, Raspberry Pi, and OpenCR), the external electrical components are used to ensure the mission completion. The external eletrical components includes servo motor (feeding the ball), flywheel (launching the ball), and ultrasonic sensor (moving target detection). 
+<div align="center">
 
 | Component | Connection on Raspberry Pi pinout |
 | :---: | :---: |
@@ -10,6 +11,8 @@ Besides the electrical components that Turtlebot3 Burger provides (LiDAR, Raspbe
 | Ultrasonic sensor (trigger) | GPIO 23 |
 | Ultrasonic sensor (echo) | GPIO 24 |
 | Flywheel control (MOSFET gate) | GPIO 18 |
+
+</div>
 
 All the power supply of the components listed in the table need to be connected to 5V, and the ground should be connected to the common GND on Raspberry Pi to ensure the system has the same reference grounding point. 
 
