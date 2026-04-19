@@ -31,13 +31,13 @@ This project is organized into three main engineering modules:
 ```text
 r2auto_nav_CDE2310/
 │
-├── Electrical Design/                              # Electrical and Control Subsystems         
+├── Electrical Design                               # Electrical and Control Subsystems         
 │
-├── Mechanical Engineering/                         # Mechanical Subsystem                         
+├── Mechanical Engineering                          # Mechanical Subsystem                         
 │
-├── Software/                                       # Software and Algorithmic Subsystem (ROS2 Workspace)
+├── Software                                        # Software and Algorithmic Subsystem (ROS2 Workspace)
 │                     
-├── End_User_documentation.pdf                      # End-user documentation and test reports
+├── End_User_Documentation.pdf                      # End-user documentation and test reports
 │
 └── README.md
 ```
