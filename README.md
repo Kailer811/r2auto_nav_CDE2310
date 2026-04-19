@@ -1,7 +1,6 @@
 # 🤖 Autonomous Payload Delivery AMR (CDE2310)
 [![ROS2 - Humble](https://img.shields.io/badge/ROS2-Humble-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
 [![Hardware - TurtleBot3](https://img.shields.io/badge/Hardware-TurtleBot3_Burger-orange)](https://emanual.robotis.com/docs/en/platform/turtlebot3/overview/)
-[![Python 3](https://img.shields.io/badge/Python-3.10-blue?logo=python&logoColor=white)]()
 
 
 ## Table of Contents
