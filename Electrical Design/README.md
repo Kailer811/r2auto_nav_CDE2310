@@ -15,6 +15,6 @@ All the power supply of the components listed in the table need to be connected 
 
 There is a "Flywheel control circuit" under Schematic Diagram for Electrical Design.png. This circuit is the key circuit to control the on and off of the flywheel. 
 
-For the testing, there are two testing pyton files. The static_launching_testing.py is meant for the static target. Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, servo motor feeds one ball at a time and three balls in total, and the timing required is correct. 
+For the testing, there are two testing pyton files. The [`static_launching_testing.py`](./static_launching_testing.py) is meant for the static target. Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, servo motor feeds one ball at a time and three balls in total, and the timing required is correct. 
 
-For dynamic (moving) target, run the testing file of dynamic_launching_testing.py. Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, ultrasonic sensor detects the moving target in time, and servo motor feeds the ball immediately when there is an object between 17 to 23 centimeters. 
+For dynamic (moving) target, run [`dynamic_launching_testing.py`](./dynamic_launching_testing.py). Place the turtlebot directly to the target 4 to 8 centimeters away, then run the python file to check if the flywheel starts successfully, ultrasonic sensor detects the moving target in time, and servo motor feeds the ball immediately when there is an object between 17 to 23 centimeters. 
