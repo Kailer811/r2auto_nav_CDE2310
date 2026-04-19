@@ -10,7 +10,7 @@
   - Mechanical Subsystem
   - Electrical Subsystem
   - Software Subsystem
-- [Team Members](#-team-members)
+- Team Members
 
 ---
 
