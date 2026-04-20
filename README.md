@@ -39,6 +39,7 @@ r2auto_nav_CDE2310/
 │                     
 ├── End_User_Documentation.pdf                      # End-user documentation and test reports
 │
+├── G2 Report Group 8.pdf                           # Final Group Project
 └── README.md
 ```
 ---
